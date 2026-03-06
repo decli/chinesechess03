@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.TipsAndUpdates
@@ -38,6 +39,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -333,6 +335,11 @@ private fun ControlPanel(
                         Text("电脑推演中", fontSize = 18.sp, fontWeight = FontWeight.Medium)
                     }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    InfoPill("自动续局")
+                    InfoPill("已下${state.historyDepth}步")
+                    InfoPill("大字号")
+                }
             }
         }
 
@@ -380,15 +387,41 @@ private fun ControlPanel(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ToggleTile("音效", Icons.AutoMirrored.Filled.VolumeUp, state.soundEnabled, onToggleSound, Modifier.weight(1f))
                     ToggleTile("语音", Icons.Default.RecordVoiceOver, state.ttsEnabled, onToggleTts, Modifier.weight(1f))
-                    ToggleTile("通知", Icons.Default.RecordVoiceOver, state.notificationsEnabled, onToggleNotifications, Modifier.weight(1f))
+                    ToggleTile("通知", Icons.Default.NotificationsActive, state.notificationsEnabled, onToggleNotifications, Modifier.weight(1f))
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ActionTile("导出日志", Icons.Default.BugReport, true, onExportLog, Modifier.weight(1f))
-                    Spacer(modifier = Modifier.weight(1f))
-                    Spacer(modifier = Modifier.weight(1f))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("当前对局会自动保存", fontSize = 16.sp, color = Color(0xFF5B6259))
+                    TextButton(onClick = onExportLog) {
+                        androidx.compose.material3.Icon(
+                            Icons.Default.BugReport,
+                            contentDescription = "导出日志",
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("导出日志", fontSize = 15.sp)
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun InfoPill(text: String) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFE5E0D2)),
+        shape = RoundedCornerShape(999.dp),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            fontSize = 14.sp,
+            color = Color(0xFF564235),
+        )
     }
 }
 

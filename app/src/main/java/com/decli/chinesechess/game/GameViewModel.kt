@@ -302,13 +302,13 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         clips += actionClip
 
         val actionText = when (actionClip) {
-            RobotClip.HORSE -> listOf("我跳马，先把节奏带起来。", "马先跳起来，这路就活了。").random(rng)
-            RobotClip.ELEPHANT -> listOf("我飞象，把阵型补稳。", "象先飞过去，后面更从容。").random(rng)
-            RobotClip.ROOK -> listOf("我出车，先压你一路。", "车一出来，味道就不一样了。").random(rng)
-            RobotClip.CANNON -> listOf("我架炮，先给你点压力。", "炮位先架好，后手就多了。").random(rng)
-            RobotClip.PAWN -> listOf("我拱兵，慢慢把空间拿回来。", "这兵先拱一下，局面更紧。").random(rng)
-            RobotClip.GUARD -> listOf("我补士，先把中宫护住。", "先补一手士，别想轻松进来。").random(rng)
-            RobotClip.GENERAL -> listOf("我挪帅，先站个更舒服的位置。", "帅先挪一步，后面更稳。").random(rng)
+            RobotClip.HORSE -> listOf("我跳马。", "马先起。").random(rng)
+            RobotClip.ELEPHANT -> listOf("我飞象。", "象先飞。").random(rng)
+            RobotClip.ROOK -> listOf("我出车。", "车来了。").random(rng)
+            RobotClip.CANNON -> listOf("我架炮。", "炮位摆好。").random(rng)
+            RobotClip.PAWN -> listOf("我拱兵。", "兵先过来。").random(rng)
+            RobotClip.GUARD -> listOf("我补士。", "士先补上。").random(rng)
+            RobotClip.GENERAL -> listOf("我挪帅。", "帅换个位。").random(rng)
             else -> "这步我先走了。"
         }
 
@@ -316,44 +316,26 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val outcomeText = when {
             check && move.isCapture -> {
                 clips += RobotClip.CHECK
-                "顺手还打你一子，再送你一声将军。"
+                "我打你，再将军。"
             }
             check -> {
                 clips += RobotClip.CHECK
-                "这步直接将军，你得先应一下。"
+                "将军。"
             }
             move.isCapture -> {
                 val clip = listOf(RobotClip.CAPTURE, RobotClip.GAIN).random(rng)
                 clips += clip
                 if (clip == RobotClip.CAPTURE) {
-                    "这颗子我就收下了。"
+                    "我打你。"
                 } else {
-                    "这步我先赚一颗。"
+                    "这步赚到了。"
                 }
             }
-            else -> {
-                val clip = listOf(RobotClip.STEADY, RobotClip.CALM, RobotClip.TAUNT).random(rng)
-                clips += clip
-                when (clip) {
-                    RobotClip.STEADY -> "先稳一手，不着急。"
-                    RobotClip.CALM -> "别急，我后面还有安排。"
-                    else -> "看好了，后手还在。"
-                }
-            }
+            else -> ""
         }
 
-        val confidenceText = if (depth >= 5) {
-            clips += RobotClip.DEEP
-            "这步我算得比较深。"
-        } else {
-            ""
-        }
         return RobotCommentary(
-            text = buildString {
-                append(actionText)
-                append(outcomeText)
-                append(confidenceText)
-            },
+            text = actionText + outcomeText,
             clips = clips.distinct(),
         )
     }

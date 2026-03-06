@@ -9,6 +9,8 @@ class XiangqiAi(
     private val zobrist = Array(BOARD_SIZE) { LongArray(15) }
     private val sideKey: Long
     private val transposition = HashMap<Long, TranspositionEntry>(200_000)
+    private val killerMoves = Array(MAX_PLY) { arrayOfNulls<Move>(2) }
+    private val historyHeuristic = IntArray(BOARD_SIZE * BOARD_SIZE)
 
     init {
         val random = Random(20260306)
@@ -22,6 +24,7 @@ class XiangqiAi(
 
     fun findBestMove(position: Position, difficulty: Difficulty): SearchResult {
         transposition.clear()
+        clearSearchHeuristics()
         val state = SearchState(
             deadlineNanos = System.nanoTime() + difficulty.timeLimitMillis * 1_000_000L,
             nodeLimit = difficulty.nodeLimit,
@@ -35,14 +38,34 @@ class XiangqiAi(
         var bestMove = legalMoves.first()
         var bestScore = Int.MIN_VALUE
         var completedDepth = 0
+        var scoreGuess = 0
 
         for (depth in 1..difficulty.maxDepth) {
             try {
-                val result = rootSearch(position, depth, state, bestMove)
-                if (result.move != null) {
-                    bestMove = result.move
-                    bestScore = result.score
-                    completedDepth = depth
+                var aspiration = if (depth >= 3) 72 else MATE_SCORE
+                var alpha = if (depth >= 3) scoreGuess - aspiration else -MATE_SCORE
+                var beta = if (depth >= 3) scoreGuess + aspiration else MATE_SCORE
+                while (true) {
+                    val result = rootSearch(position, depth, state, bestMove, alpha, beta)
+                    if (result.score <= alpha && aspiration < MATE_SCORE / 2) {
+                        aspiration *= 2
+                        alpha = result.score - aspiration
+                        beta = result.score + aspiration
+                        continue
+                    }
+                    if (result.score >= beta && aspiration < MATE_SCORE / 2) {
+                        aspiration *= 2
+                        alpha = result.score - aspiration
+                        beta = result.score + aspiration
+                        continue
+                    }
+                    if (result.move != null) {
+                        bestMove = result.move
+                        bestScore = result.score
+                        completedDepth = depth
+                        scoreGuess = result.score
+                    }
+                    break
                 }
             } catch (_: SearchTimeout) {
                 break
@@ -62,16 +85,26 @@ class XiangqiAi(
         depth: Int,
         state: SearchState,
         previousBest: Move?,
+        alphaInput: Int,
+        betaInput: Int,
     ): SearchResult {
-        var alpha = -MATE_SCORE
-        val beta = MATE_SCORE
+        var alpha = alphaInput
+        val beta = betaInput
         var bestMove: Move? = null
         var bestScore = -MATE_SCORE
-        val orderedMoves = orderMoves(position, engine.generateLegalMoves(position), previousBest)
-        for (move in orderedMoves) {
+        val orderedMoves = orderMoves(engine.generateLegalMoves(position), previousBest, 0)
+        orderedMoves.forEachIndexed { index, move ->
             state.step()
             val next = engine.applyMove(position, move)
-            val score = -negamax(next, depth - 1, -beta, -alpha, 1, state)
+            val score = if (index == 0) {
+                -negamax(next, depth - 1, -beta, -alpha, 1, state)
+            } else {
+                var candidate = -negamax(next, depth - 1, -alpha - 1, -alpha, 1, state)
+                if (candidate > alpha && candidate < beta) {
+                    candidate = -negamax(next, depth - 1, -beta, -alpha, 1, state)
+                }
+                candidate
+            }
             if (score > bestScore) {
                 bestScore = score
                 bestMove = move
@@ -124,14 +157,33 @@ class XiangqiAi(
             return -MATE_SCORE + ply
         }
 
+        val inCheck = engine.isInCheck(position.board, position.sideToMove)
         var bestMove: Move? = null
         var bestScore = -MATE_SCORE
         val originalAlpha = alphaInput
-        val orderedMoves = orderMoves(position, legalMoves, cached?.bestMove)
+        val orderedMoves = orderMoves(legalMoves, cached?.bestMove, ply)
 
-        for (move in orderedMoves) {
+        for ((index, move) in orderedMoves.withIndex()) {
             val next = engine.applyMove(position, move)
-            val score = -negamax(next, depth - 1, -beta, -alpha, ply + 1, state)
+            val score = if (index == 0) {
+                -negamax(next, depth - 1, -beta, -alpha, ply + 1, state)
+            } else {
+                val canReduce =
+                    depth >= 3 &&
+                        index >= 3 &&
+                        !inCheck &&
+                        !move.isCapture &&
+                        PieceCodec.typeOf(move.movedPiece) != PieceType.GENERAL
+                val reducedDepth = if (canReduce) depth - 2 else depth - 1
+                var candidate = -negamax(next, reducedDepth, -alpha - 1, -alpha, ply + 1, state)
+                if (canReduce && candidate > alpha) {
+                    candidate = -negamax(next, depth - 1, -alpha - 1, -alpha, ply + 1, state)
+                }
+                if (candidate > alpha && candidate < beta) {
+                    candidate = -negamax(next, depth - 1, -beta, -alpha, ply + 1, state)
+                }
+                candidate
+            }
             if (score > bestScore) {
                 bestScore = score
                 bestMove = move
@@ -140,6 +192,10 @@ class XiangqiAi(
                 alpha = score
             }
             if (alpha >= beta) {
+                if (!move.isCapture) {
+                    storeKiller(ply, move)
+                    historyHeuristic[historyIndex(move)] += depth * depth
+                }
                 break
             }
         }
@@ -168,8 +224,8 @@ class XiangqiAi(
             alpha = standPat
         }
 
-        val captures = engine.generateLegalMoves(position).filter { it.isCapture }
-        for (move in orderMoves(position, captures, null)) {
+        val captures = orderCaptures(engine.generateLegalMoves(position).filter { it.isCapture })
+        for (move in captures) {
             state.step()
             val score = -quiescence(engine.applyMove(position, move), -beta, -alpha, state)
             if (score >= beta) {
@@ -231,25 +287,33 @@ class XiangqiAi(
         }
     }
 
-    private fun orderMoves(position: Position, moves: List<Move>, preferredMove: Move?): List<Move> =
+    private fun orderMoves(moves: List<Move>, preferredMove: Move?, ply: Int): List<Move> =
         moves.sortedByDescending { move ->
             var score = 0
             if (preferredMove != null && move.from == preferredMove.from && move.to == preferredMove.to) {
-                score += 10_000
+                score += 2_000_000
             }
             if (move.isCapture) {
                 val capturedValue = PieceCodec.typeOf(move.capturedPiece)?.baseValue ?: 0
                 val attackerValue = PieceCodec.typeOf(move.movedPiece)?.baseValue ?: 0
-                score += 5_000 + capturedValue - attackerValue / 4
+                score += 1_000_000 + capturedValue * 16 - attackerValue
             }
-            if (move.to == 40 || move.to == 49) {
-                score += 40
+            val killers = killerMoves[ply]
+            if (killers[0]?.sameRoute(move) == true) {
+                score += 180_000
+            } else if (killers[1]?.sameRoute(move) == true) {
+                score += 150_000
             }
-            val next = engine.applyMove(position, move)
-            if (engine.isInCheck(next.board, next.sideToMove)) {
-                score += 350
-            }
+            score += historyHeuristic[historyIndex(move)]
+            score += centralBonus(move)
             score
+        }
+
+    private fun orderCaptures(moves: List<Move>): List<Move> =
+        moves.sortedByDescending { move ->
+            val capturedValue = PieceCodec.typeOf(move.capturedPiece)?.baseValue ?: 0
+            val attackerValue = PieceCodec.typeOf(move.movedPiece)?.baseValue ?: 0
+            capturedValue * 16 - attackerValue
         }
 
     private fun positionHash(position: Position): Long {
@@ -268,6 +332,34 @@ class XiangqiAi(
     }
 
     private fun pieceToIndex(piece: Int): Int = if (piece > 0) piece else abs(piece) + 7
+
+    private fun centralBonus(move: Move): Int {
+        val fileBias = 4 - abs(4 - fileOf(move.to))
+        val rankBias = if (move.movedPiece > 0) BOARD_RANKS - 1 - rankOf(move.to) else rankOf(move.to)
+        return fileBias * 12 + rankBias * 4
+    }
+
+    private fun historyIndex(move: Move): Int = move.from * BOARD_SIZE + move.to
+
+    private fun storeKiller(ply: Int, move: Move) {
+        if (ply >= MAX_PLY) {
+            return
+        }
+        val killers = killerMoves[ply]
+        if (killers[0]?.sameRoute(move) == true) {
+            return
+        }
+        killers[1] = killers[0]
+        killers[0] = move
+    }
+
+    private fun clearSearchHeuristics() {
+        for (ply in 0 until MAX_PLY) {
+            killerMoves[ply][0] = null
+            killerMoves[ply][1] = null
+        }
+        historyHeuristic.fill(0)
+    }
 
     private data class SearchState(
         val deadlineNanos: Long,
@@ -301,5 +393,8 @@ class XiangqiAi(
 
     private companion object {
         const val MATE_SCORE = 30_000
+        const val MAX_PLY = 64
     }
 }
+
+private fun Move.sameRoute(other: Move): Boolean = from == other.from && to == other.to
