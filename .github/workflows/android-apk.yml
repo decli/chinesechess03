@@ -1,5 +1,8 @@
 name: Android APK
 
+permissions:
+  contents: write
+
 on:
   push:
     branches:
@@ -43,4 +46,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: chinesechess-release-apk
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          path: app/build/outputs/apk/release/app-release.apk
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ci-build-${{ github.run_number }}
+          name: CI Build #${{ github.run_number }}
+          prerelease: true
+          generate_release_notes: true
+          files: app/build/outputs/apk/release/app-release.apk
+          body: |
+            Branch: `${{ github.ref_name }}`
+            Commit: `${{ github.sha }}`
+            Workflow: `${{ github.workflow }}`
