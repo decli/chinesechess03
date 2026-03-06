@@ -5,12 +5,13 @@
 ## 功能
 
 - Android 15 目标版本：`compileSdk 35` / `targetSdk 35`
-- 默认中级 AI，对应有限时、有限节点的迭代加深 Alpha-Beta 搜索
+- 默认中级 AI，支持入门 / 中级 / 高手难度
 - 支持难度切换：入门 / 中级 / 高手
 - 双方落子音效
-- 机器人落子幽默语音播报
+- 机器人落子语音播报
 - Android 通知播报支持
 - 悔棋、新局、提示
+- 自动保存并恢复当前对局
 - 老人友好大字号、大按钮、棋盘优先布局
 - 棋盘在横屏平板上按全高度铺满，减少上下浪费空间
 
@@ -18,16 +19,16 @@
 
 - UI：Kotlin + Jetpack Compose + Material 3
 - 引擎：90 格整数棋盘表示、合法走法生成、将军检测、局面评估、置换表
-- 搜索：迭代加深 Negamax / Alpha-Beta，按难度限制时间和节点，避免高难度长时间卡死
-- 音频：`ToneGenerator`
-- 语音：`TextToSpeech`
+- 搜索：迭代加深 Negamax / Alpha-Beta，配合 PVS、Aspiration Window、Killer Move、History Heuristic、LMR
+- 音频：落子音效 + 内置机器人语音片段
+- 语音：优先设备中文 `TextToSpeech`，失败时回退到内置语音片段
 - 通知：`NotificationCompat`
 
 ## 目录
 
-- `app/src/main/java/com/decli/chinesechess/game`：规则、AI、ViewModel
+- `app/src/main/java/com/decli/chinesechess/game`：规则、AI、存档、ViewModel
 - `app/src/main/java/com/decli/chinesechess/ui`：Compose 界面、通知、语音、音效
-- `.github/workflows/android-apk.yml`：APK 构建流程
+- `../.github/workflows/android-apk.yml`：APK 构建和发布流程
 
 ## 本地构建
 
@@ -45,14 +46,14 @@ sdk.dir=D:\\AndroidSdk
 4. 执行：
 
 ```bash
-./gradlew test
+./gradlew testDebugUnitTest
 ./gradlew assembleRelease
 ```
 
 Release APK 产物路径：
 
 ```text
-app/build/outputs/apk/release/app-release-unsigned.apk
+app/build/outputs/apk/release/app-release.apk
 ```
 
 ## 设计说明
@@ -60,3 +61,4 @@ app/build/outputs/apk/release/app-release-unsigned.apk
 - 默认锁定横屏，更适合 14 寸平板把棋盘高度拉满。
 - AI 默认执黑，用户执红先手。
 - 高难度依旧受时间/节点限制，不会无限搜索。
+- 根仓库首页 README 用于 GitHub 展示，实际 Android 工程位于当前目录。
