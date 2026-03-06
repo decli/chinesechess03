@@ -1,62 +1,187 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item
-        android:left="28dp"
-        android:top="22dp"
-        android:right="28dp"
-        android:bottom="22dp">
+        android:left="18dp"
+        android:top="14dp"
+        android:right="18dp"
+        android:bottom="18dp">
         <shape android:shape="rectangle">
-            <solid android:color="#E6C98B" />
+            <solid android:color="#E6C48F" />
             <corners android:radius="18dp" />
             <stroke
                 android:width="3dp"
-                android:color="#5A3215" />
-        </shape>
-    </item>
-
-    <item
-        android:left="44dp"
-        android:top="38dp"
-        android:right="44dp"
-        android:bottom="38dp">
-        <shape android:shape="oval">
-            <solid android:color="#F8F1DF" />
-            <stroke
-                android:width="4dp"
-                android:color="#8E2E18" />
-        </shape>
-    </item>
-
-    <item
-        android:left="59dp"
-        android:top="53dp"
-        android:right="59dp"
-        android:bottom="53dp">
-        <shape android:shape="rectangle">
-            <solid android:color="#8E2E18" />
-            <corners android:radius="4dp" />
-        </shape>
-    </item>
-
-    <item
-        android:left="63dp"
-        android:top="34dp"
-        android:right="63dp"
-        android:bottom="34dp">
-        <shape android:shape="rectangle">
-            <solid android:color="#5A3215" />
-            <size android:width="2dp" />
+                android:color="#6E4423" />
         </shape>
     </item>
 
     <item
         android:left="34dp"
-        android:top="63dp"
+        android:top="28dp"
         android:right="34dp"
-        android:bottom="63dp">
+        android:bottom="28dp">
         <shape android:shape="rectangle">
-            <solid android:color="#5A3215" />
-            <size android:height="2dp" />
+            <solid android:color="#7A4D25" />
+        </shape>
+    </item>
+
+    <item
+        android:left="48dp"
+        android:top="28dp"
+        android:right="48dp"
+        android:bottom="28dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#7A4D25" />
+        </shape>
+    </item>
+
+    <item
+        android:left="62dp"
+        android:top="28dp"
+        android:right="62dp"
+        android:bottom="28dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#7A4D25" />
+        </shape>
+    </item>
+
+    <item
+        android:left="76dp"
+        android:top="28dp"
+        android:right="76dp"
+        android:bottom="28dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#7A4D25" />
+        </shape>
+    </item>
+
+    <item
+        android:left="29dp"
+        android:top="38dp"
+        android:right="29dp"
+        android:bottom="74dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#7A4D25" />
+        </shape>
+    </item>
+
+    <item
+        android:left="29dp"
+        android:top="52dp"
+        android:right="29dp"
+        android:bottom="60dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#7A4D25" />
+        </shape>
+    </item>
+
+    <item
+        android:left="29dp"
+        android:top="66dp"
+        android:right="29dp"
+        android:bottom="46dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#7A4D25" />
+        </shape>
+    </item>
+
+    <item
+        android:left="29dp"
+        android:top="80dp"
+        android:right="29dp"
+        android:bottom="32dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#7A4D25" />
+        </shape>
+    </item>
+
+    <item
+        android:left="29dp"
+        android:top="94dp"
+        android:right="29dp"
+        android:bottom="18dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#7A4D25" />
+        </shape>
+    </item>
+
+    <item
+        android:left="32dp"
+        android:top="20dp"
+        android:right="56dp"
+        android:bottom="82dp">
+        <shape android:shape="oval">
+            <solid android:color="#F8F1E3" />
+            <stroke
+                android:width="5dp"
+                android:color="#A62F21" />
+        </shape>
+    </item>
+
+    <item
+        android:left="82dp"
+        android:top="26dp"
+        android:right="16dp"
+        android:bottom="92dp">
+        <shape android:shape="oval">
+            <solid android:color="#F3E8D2" />
+            <stroke
+                android:width="4dp"
+                android:color="#4A3425" />
+        </shape>
+    </item>
+
+    <item
+        android:left="56dp"
+        android:top="44dp"
+        android:right="70dp"
+        android:bottom="106dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#A62F21" />
+            <corners android:radius="3dp" />
+        </shape>
+    </item>
+
+    <item
+        android:left="46dp"
+        android:top="52dp"
+        android:right="46dp"
+        android:bottom="98dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#A62F21" />
+            <corners android:radius="3dp" />
+        </shape>
+    </item>
+
+    <item
+        android:left="46dp"
+        android:top="68dp"
+        android:right="46dp"
+        android:bottom="82dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#A62F21" />
+            <corners android:radius="3dp" />
+        </shape>
+    </item>
+
+    <item
+        android:left="46dp"
+        android:top="84dp"
+        android:right="46dp"
+        android:bottom="66dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#A62F21" />
+            <corners android:radius="3dp" />
+        </shape>
+    </item>
+
+    <item
+        android:left="64dp"
+        android:top="48dp"
+        android:right="64dp"
+        android:bottom="100dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#A62F21" />
+            <corners android:radius="3dp" />
         </shape>
     </item>
 </layer-list>

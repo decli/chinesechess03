@@ -65,6 +65,13 @@ data class Position(
     fun copyBoard(): IntArray = board.copyOf()
 }
 
+fun samePosition(a: Position, b: Position): Boolean =
+    a.sideToMove == b.sideToMove &&
+        a.board.contentEquals(b.board)
+
+fun repetitionCount(history: List<Position>, target: Position): Int =
+    history.count { position -> samePosition(position, target) }
+
 enum class Winner(val title: String) {
     RED("红方胜"),
     BLACK("黑方胜"),

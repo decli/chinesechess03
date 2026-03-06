@@ -3,6 +3,7 @@ package com.decli.chinesechess.game
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.decli.chinesechess.R
 import com.decli.chinesechess.debug.DebugLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -62,6 +63,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     private val ai = XiangqiAi(engine)
     private val rng = Random(20260306)
     private val storage = GameStorage(application.applicationContext)
+    private val appName = application.getString(R.string.app_name)
     private val history = mutableListOf<Position>()
     private var aiJob: Job? = null
     private val restoredGame = restoreSavedGame()
@@ -258,7 +260,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             )
             commitMove(move, side = Side.BLACK, banner = line)
             _events.tryEmit(GameEvent.Speak(line, clips = commentary.clips))
-            _events.tryEmit(GameEvent.Notify("象棋乐斗", line))
+            _events.tryEmit(GameEvent.Notify(appName, line))
         }
     }
 
@@ -266,7 +268,12 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val current = history.last()
         val next = engine.applyMove(current, move)
         history += next
-        val winner = engine.resolveWinner(next)
+        val repeated = repetitionCount(history, next) >= 3
+        val winner = if (repeated) Winner.DRAW else engine.resolveWinner(next)
+        val resolvedBanner = when {
+            repeated -> "局面三次重复，判和。"
+            else -> banner
+        }
         _uiState.update {
             it.copy(
                 position = next,
@@ -275,10 +282,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 hintMove = null,
                 aiThinking = false,
                 winner = winner,
-                banner = if (winner == null) banner else "${winner.title}。${banner.takeIf { message -> message.isNotBlank() } ?: ""}".trim(),
+                banner = if (winner == null) resolvedBanner else "${winner.title}。${resolvedBanner.takeIf { message -> message.isNotBlank() } ?: ""}".trim(),
             )
         }
-        DebugLogger.log("STATE", "commit side=${side.name} capture=${move.isCapture} winner=${winner?.name ?: "none"}")
+        DebugLogger.log("STATE", "commit side=${side.name} capture=${move.isCapture} repeated=$repeated winner=${winner?.name ?: "none"}")
         _events.tryEmit(GameEvent.PlayMoveSound(side = side, capture = move.isCapture))
         persistGame()
     }
@@ -316,7 +323,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val outcomeText = when {
             check && move.isCapture -> {
                 clips += RobotClip.CHECK
-                "我打你，再将军。"
+                "我吃你，再将军。"
             }
             check -> {
                 clips += RobotClip.CHECK
@@ -326,7 +333,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 val clip = listOf(RobotClip.CAPTURE, RobotClip.GAIN).random(rng)
                 clips += clip
                 if (clip == RobotClip.CAPTURE) {
-                    "我打你。"
+                    "我吃你。"
                 } else {
                     "这步赚到了。"
                 }

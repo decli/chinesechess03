@@ -29,7 +29,7 @@ object DebugLogger {
         directory.mkdirs()
         val file = File(directory, "xiangqi_log_${fileFormat.format(Date())}.txt")
         val content = buildString {
-            appendLine("App: 象棋乐斗")
+            appendLine("App: 老爸下象棋")
             appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
             appendLine("Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
             appendLine("Time: ${Date()}")

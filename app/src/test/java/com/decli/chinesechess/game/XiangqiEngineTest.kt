@@ -1,5 +1,6 @@
 package com.decli.chinesechess.game
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -27,5 +28,19 @@ class XiangqiEngineTest {
             "returned move must be legal",
             XiangqiEngine.generateLegalMoves(position).any { it.from == result.move?.from && it.to == result.move?.to },
         )
+    }
+
+    @Test
+    fun repetitionHelpersMatchBoardAndSideToMove() {
+        val start = XiangqiStartPosition.create()
+        val same = XiangqiStartPosition.create()
+        val moved = XiangqiEngine.applyMove(
+            start,
+            XiangqiEngine.generateLegalMoves(start).first(),
+        )
+
+        assertTrue(samePosition(start, same))
+        assertFalse(samePosition(start, moved))
+        assertEquals(2, repetitionCount(listOf(start, moved, same), start))
     }
 }

@@ -29,6 +29,7 @@ class XiangqiAi(
             deadlineNanos = System.nanoTime() + difficulty.timeLimitMillis * 1_000_000L,
             nodeLimit = difficulty.nodeLimit,
         )
+        val rootHash = positionHash(position)
 
         val legalMoves = engine.generateLegalMoves(position)
         if (legalMoves.isEmpty()) {
@@ -40,36 +41,41 @@ class XiangqiAi(
         var completedDepth = 0
         var scoreGuess = 0
 
-        for (depth in 1..difficulty.maxDepth) {
-            try {
-                var aspiration = if (depth >= 3) 72 else MATE_SCORE
-                var alpha = if (depth >= 3) scoreGuess - aspiration else -MATE_SCORE
-                var beta = if (depth >= 3) scoreGuess + aspiration else MATE_SCORE
-                while (true) {
-                    val result = rootSearch(position, depth, state, bestMove, alpha, beta)
-                    if (result.score <= alpha && aspiration < MATE_SCORE / 2) {
-                        aspiration *= 2
-                        alpha = result.score - aspiration
-                        beta = result.score + aspiration
-                        continue
+        state.pushPath(rootHash)
+        try {
+            for (depth in 1..difficulty.maxDepth) {
+                try {
+                    var aspiration = if (depth >= 3) 72 else MATE_SCORE
+                    var alpha = if (depth >= 3) scoreGuess - aspiration else -MATE_SCORE
+                    var beta = if (depth >= 3) scoreGuess + aspiration else MATE_SCORE
+                    while (true) {
+                        val result = rootSearch(position, depth, state, bestMove, alpha, beta)
+                        if (result.score <= alpha && aspiration < MATE_SCORE / 2) {
+                            aspiration *= 2
+                            alpha = result.score - aspiration
+                            beta = result.score + aspiration
+                            continue
+                        }
+                        if (result.score >= beta && aspiration < MATE_SCORE / 2) {
+                            aspiration *= 2
+                            alpha = result.score - aspiration
+                            beta = result.score + aspiration
+                            continue
+                        }
+                        if (result.move != null) {
+                            bestMove = result.move
+                            bestScore = result.score
+                            completedDepth = depth
+                            scoreGuess = result.score
+                        }
+                        break
                     }
-                    if (result.score >= beta && aspiration < MATE_SCORE / 2) {
-                        aspiration *= 2
-                        alpha = result.score - aspiration
-                        beta = result.score + aspiration
-                        continue
-                    }
-                    if (result.move != null) {
-                        bestMove = result.move
-                        bestScore = result.score
-                        completedDepth = depth
-                        scoreGuess = result.score
-                    }
+                } catch (_: SearchTimeout) {
                     break
                 }
-            } catch (_: SearchTimeout) {
-                break
             }
+        } finally {
+            state.popPath()
         }
 
         return SearchResult(
@@ -125,88 +131,96 @@ class XiangqiAi(
         state: SearchState,
     ): Int {
         state.step()
-        val winner = engine.resolveWinner(position)
-        if (winner != null) {
-            return when (winner) {
-                Winner.DRAW -> 0
-                Winner.RED -> if (position.sideToMove == Side.RED) -MATE_SCORE + ply else MATE_SCORE - ply
-                Winner.BLACK -> if (position.sideToMove == Side.BLACK) -MATE_SCORE + ply else MATE_SCORE - ply
-            }
-        }
-
-        if (depth <= 0) {
-            return quiescence(position, alphaInput, beta, state)
-        }
-
         val hash = positionHash(position)
-        val cached = transposition[hash]
-        var alpha = alphaInput
-        if (cached != null && cached.depth >= depth) {
-            when (cached.flag) {
-                EntryFlag.EXACT -> return cached.score
-                EntryFlag.LOWER -> alpha = maxOf(alpha, cached.score)
-                EntryFlag.UPPER -> if (cached.score < beta && cached.score < alpha) return cached.score
-            }
-            if (alpha >= beta) {
-                return cached.score
-            }
+        repetitionScore(position, hash, state)?.let { score ->
+            return score
         }
-
-        val legalMoves = engine.generateLegalMoves(position)
-        if (legalMoves.isEmpty()) {
-            return -MATE_SCORE + ply
-        }
-
-        val inCheck = engine.isInCheck(position.board, position.sideToMove)
-        var bestMove: Move? = null
-        var bestScore = -MATE_SCORE
-        val originalAlpha = alphaInput
-        val orderedMoves = orderMoves(legalMoves, cached?.bestMove, ply)
-
-        for ((index, move) in orderedMoves.withIndex()) {
-            val next = engine.applyMove(position, move)
-            val score = if (index == 0) {
-                -negamax(next, depth - 1, -beta, -alpha, ply + 1, state)
-            } else {
-                val canReduce =
-                    depth >= 3 &&
-                        index >= 3 &&
-                        !inCheck &&
-                        !move.isCapture &&
-                        PieceCodec.typeOf(move.movedPiece) != PieceType.GENERAL
-                val reducedDepth = if (canReduce) depth - 2 else depth - 1
-                var candidate = -negamax(next, reducedDepth, -alpha - 1, -alpha, ply + 1, state)
-                if (canReduce && candidate > alpha) {
-                    candidate = -negamax(next, depth - 1, -alpha - 1, -alpha, ply + 1, state)
+        state.pushPath(hash)
+        try {
+            val winner = engine.resolveWinner(position)
+            if (winner != null) {
+                return when (winner) {
+                    Winner.DRAW -> 0
+                    Winner.RED -> if (position.sideToMove == Side.RED) -MATE_SCORE + ply else MATE_SCORE - ply
+                    Winner.BLACK -> if (position.sideToMove == Side.BLACK) -MATE_SCORE + ply else MATE_SCORE - ply
                 }
-                if (candidate > alpha && candidate < beta) {
-                    candidate = -negamax(next, depth - 1, -beta, -alpha, ply + 1, state)
-                }
-                candidate
             }
-            if (score > bestScore) {
-                bestScore = score
-                bestMove = move
-            }
-            if (score > alpha) {
-                alpha = score
-            }
-            if (alpha >= beta) {
-                if (!move.isCapture) {
-                    storeKiller(ply, move)
-                    historyHeuristic[historyIndex(move)] += depth * depth
-                }
-                break
-            }
-        }
 
-        val flag = when {
-            bestScore <= originalAlpha -> EntryFlag.UPPER
-            bestScore >= beta -> EntryFlag.LOWER
-            else -> EntryFlag.EXACT
+            if (depth <= 0) {
+                return quiescence(position, alphaInput, beta, state)
+            }
+
+            val cached = transposition[hash]
+            var alpha = alphaInput
+            if (cached != null && cached.depth >= depth) {
+                when (cached.flag) {
+                    EntryFlag.EXACT -> return cached.score
+                    EntryFlag.LOWER -> alpha = maxOf(alpha, cached.score)
+                    EntryFlag.UPPER -> if (cached.score < beta && cached.score < alpha) return cached.score
+                }
+                if (alpha >= beta) {
+                    return cached.score
+                }
+            }
+
+            val legalMoves = engine.generateLegalMoves(position)
+            if (legalMoves.isEmpty()) {
+                return -MATE_SCORE + ply
+            }
+
+            val inCheck = engine.isInCheck(position.board, position.sideToMove)
+            var bestMove: Move? = null
+            var bestScore = -MATE_SCORE
+            val originalAlpha = alphaInput
+            val orderedMoves = orderMoves(legalMoves, cached?.bestMove, ply)
+
+            for ((index, move) in orderedMoves.withIndex()) {
+                val next = engine.applyMove(position, move)
+                val score = if (index == 0) {
+                    -negamax(next, depth - 1, -beta, -alpha, ply + 1, state)
+                } else {
+                    val canReduce =
+                        depth >= 3 &&
+                            index >= 3 &&
+                            !inCheck &&
+                            !move.isCapture &&
+                            PieceCodec.typeOf(move.movedPiece) != PieceType.GENERAL
+                    val reducedDepth = if (canReduce) depth - 2 else depth - 1
+                    var candidate = -negamax(next, reducedDepth, -alpha - 1, -alpha, ply + 1, state)
+                    if (canReduce && candidate > alpha) {
+                        candidate = -negamax(next, depth - 1, -alpha - 1, -alpha, ply + 1, state)
+                    }
+                    if (candidate > alpha && candidate < beta) {
+                        candidate = -negamax(next, depth - 1, -beta, -alpha, ply + 1, state)
+                    }
+                    candidate
+                }
+                if (score > bestScore) {
+                    bestScore = score
+                    bestMove = move
+                }
+                if (score > alpha) {
+                    alpha = score
+                }
+                if (alpha >= beta) {
+                    if (!move.isCapture) {
+                        storeKiller(ply, move)
+                        historyHeuristic[historyIndex(move)] += depth * depth
+                    }
+                    break
+                }
+            }
+
+            val flag = when {
+                bestScore <= originalAlpha -> EntryFlag.UPPER
+                bestScore >= beta -> EntryFlag.LOWER
+                else -> EntryFlag.EXACT
+            }
+            transposition[hash] = TranspositionEntry(depth, bestScore, flag, bestMove)
+            return bestScore
+        } finally {
+            state.popPath()
         }
-        transposition[hash] = TranspositionEntry(depth, bestScore, flag, bestMove)
-        return bestScore
     }
 
     private fun quiescence(
@@ -361,10 +375,23 @@ class XiangqiAi(
         historyHeuristic.fill(0)
     }
 
+    private fun repetitionScore(position: Position, hash: Long, state: SearchState): Int? {
+        if (!state.hasSeen(hash)) {
+            return null
+        }
+        return if (engine.isInCheck(position.board, position.sideToMove)) {
+            REPETITION_CHECK_SCORE
+        } else {
+            0
+        }
+    }
+
     private data class SearchState(
         val deadlineNanos: Long,
         val nodeLimit: Int,
         var nodes: Int = 0,
+        val pathHashes: LongArray = LongArray(MAX_PLY + 8),
+        var pathSize: Int = 0,
     ) {
         fun step() {
             nodes += 1
@@ -373,6 +400,28 @@ class XiangqiAi(
                     throw SearchTimeout
                 }
             }
+        }
+
+        fun pushPath(hash: Long) {
+            if (pathSize < pathHashes.size) {
+                pathHashes[pathSize] = hash
+                pathSize += 1
+            }
+        }
+
+        fun popPath() {
+            if (pathSize > 0) {
+                pathSize -= 1
+            }
+        }
+
+        fun hasSeen(hash: Long): Boolean {
+            for (index in 0 until pathSize) {
+                if (pathHashes[index] == hash) {
+                    return true
+                }
+            }
+            return false
         }
     }
 
@@ -393,6 +442,7 @@ class XiangqiAi(
 
     private companion object {
         const val MATE_SCORE = 30_000
+        const val REPETITION_CHECK_SCORE = 120
         const val MAX_PLY = 64
     }
 }
