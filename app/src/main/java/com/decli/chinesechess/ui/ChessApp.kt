@@ -117,7 +117,7 @@ fun ChineseChessApp(
                     feedbackController.playMove(event.side, event.capture)
                 }
                 is GameEvent.Speak -> if (latestState.ttsEnabled) {
-                    feedbackController.speak(event.text)
+                    feedbackController.speak(event.text, event.clips)
                 }
                 is GameEvent.Notify -> if (latestState.notificationsEnabled) {
                     feedbackController.notify(event.text, notificationsGranted)

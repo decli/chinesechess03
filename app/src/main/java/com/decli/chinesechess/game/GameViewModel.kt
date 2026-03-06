@@ -34,8 +34,26 @@ data class GameUiState(
 
 sealed interface GameEvent {
     data class PlayMoveSound(val side: Side, val capture: Boolean) : GameEvent
-    data class Speak(val text: String) : GameEvent
+    data class Speak(val text: String, val clips: List<RobotClip> = emptyList()) : GameEvent
     data class Notify(val title: String, val text: String) : GameEvent
+}
+
+enum class RobotClip {
+    THINKING,
+    HORSE,
+    ELEPHANT,
+    ROOK,
+    CANNON,
+    PAWN,
+    GUARD,
+    GENERAL,
+    CHECK,
+    CAPTURE,
+    TAUNT,
+    STEADY,
+    DEEP,
+    GAIN,
+    CALM,
 }
 
 class GameViewModel(application: Application) : AndroidViewModel(application) {
@@ -203,7 +221,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 banner = "电脑正在思考，请稍候……",
             )
         }
-        _events.tryEmit(GameEvent.Speak("让我想想怎么走。"))
+        _events.tryEmit(GameEvent.Speak("让我想想怎么走。", clips = listOf(RobotClip.THINKING)))
 
         aiJob = viewModelScope.launch(Dispatchers.Default) {
             val position = _uiState.value.position
@@ -222,9 +240,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val nextPosition = engine.applyMove(position, move)
-            val line = robotLine(move, nextPosition, result.depthReached)
+            val commentary = robotLine(move, nextPosition, result.depthReached)
+            val line = commentary.text
             commitMove(move, side = Side.BLACK, banner = line)
-            _events.tryEmit(GameEvent.Speak(line))
+            _events.tryEmit(GameEvent.Speak(line, clips = commentary.clips))
             _events.tryEmit(GameEvent.Notify("象棋乐斗", line))
         }
     }
@@ -253,33 +272,52 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(selectedSquare = null, legalTargets = emptySet()) }
     }
 
-    private fun robotLine(move: Move, nextPosition: Position, depth: Int): String {
-        val actionPart = when (PieceCodec.typeOf(move.movedPiece)) {
-            PieceType.HORSE -> "我跳马。"
-            PieceType.ELEPHANT -> "我飞象。"
-            PieceType.ROOK -> "我出车。"
-            PieceType.CANNON -> "我架炮。"
-            PieceType.PAWN -> "我拱兵。"
-            PieceType.ADVISOR -> "我补士。"
-            PieceType.GENERAL -> "我挪帅。"
-            null -> "这步我先走了。"
+    private fun robotLine(move: Move, nextPosition: Position, depth: Int): RobotCommentary {
+        val clips = mutableListOf<RobotClip>()
+        val pieces = mutableListOf<String>()
+
+        val actionClip = when (PieceCodec.typeOf(move.movedPiece)) {
+            PieceType.HORSE -> RobotClip.HORSE
+            PieceType.ELEPHANT -> RobotClip.ELEPHANT
+            PieceType.ROOK -> RobotClip.ROOK
+            PieceType.CANNON -> RobotClip.CANNON
+            PieceType.PAWN -> RobotClip.PAWN
+            PieceType.ADVISOR -> RobotClip.GUARD
+            PieceType.GENERAL -> RobotClip.GENERAL
+            null -> RobotClip.TAUNT
         }
-        val checkPart = if (engine.isInCheck(nextPosition.board, nextPosition.sideToMove)) {
-            "将军。"
+        clips += actionClip
+        pieces += when (actionClip) {
+            RobotClip.HORSE -> "我跳马。"
+            RobotClip.ELEPHANT -> "我飞象。"
+            RobotClip.ROOK -> "我出车。"
+            RobotClip.CANNON -> "我架炮。"
+            RobotClip.PAWN -> "我拱兵。"
+            RobotClip.GUARD -> "我补士。"
+            RobotClip.GENERAL -> "我挪帅。"
+            else -> "这步我先走了。"
+        }
+
+        if (engine.isInCheck(nextPosition.board, nextPosition.sideToMove)) {
+            clips += RobotClip.CHECK
+            pieces += "我将军。"
+        }
+
+        if (move.isCapture) {
+            val captureClip = listOf(RobotClip.CAPTURE, RobotClip.GAIN).random(rng)
+            clips += captureClip
+            pieces += if (captureClip == RobotClip.CAPTURE) "我打你。" else "这步我赚到了。"
         } else {
-            ""
+            val tauntClip = listOf(RobotClip.TAUNT, RobotClip.CALM).random(rng)
+            clips += tauntClip
+            pieces += if (tauntClip == RobotClip.TAUNT) "看好了。" else "别急，我还在算。"
         }
-        val capturePart = if (move.isCapture) {
-            listOf("我打你。", "这颗子我收下了。", "这步我赚到了。").random(rng)
-        } else {
-            listOf("看好了。", "别急，我还在算。", "局面开始往我这边靠了。").random(rng)
-        }
-        val depthPart = when {
-            depth >= 6 -> "这步我算得很深。"
-            depth >= 4 -> "这步是认真推过的。"
-            else -> "先稳一手。"
-        }
-        return "让我想想。$actionPart$checkPart$capturePart$depthPart"
+
+        val depthClip = if (depth >= 5) RobotClip.DEEP else RobotClip.STEADY
+        clips += depthClip
+        pieces += if (depthClip == RobotClip.DEEP) "这步我算得很深。" else "先稳一手。"
+
+        return RobotCommentary(text = pieces.joinToString(""), clips = clips)
     }
 
     private fun formatMove(move: Move): String {
@@ -327,4 +365,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             ),
         )
     }
+
+    private data class RobotCommentary(
+        val text: String,
+        val clips: List<RobotClip>,
+    )
 }

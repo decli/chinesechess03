@@ -7,11 +7,13 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.media.MediaPlayer
 import android.os.Build
 import android.speech.tts.TextToSpeech
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.decli.chinesechess.R
+import com.decli.chinesechess.game.RobotClip
 import com.decli.chinesechess.game.Side
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -25,6 +27,7 @@ class FeedbackController(
     private val notificationManager = NotificationManagerCompat.from(context)
     private val textToSpeech = TextToSpeech(context, this)
     private val audioExecutor = Executors.newSingleThreadExecutor()
+    private val voiceExecutor = Executors.newSingleThreadExecutor()
     private val normalMoveSamples = buildWoodenMoveSamples(strength = 0.75, pitch = 170.0)
     private val aiMoveSamples = buildWoodenMoveSamples(strength = 0.82, pitch = 150.0)
     private val captureSamples = buildWoodenMoveSamples(strength = 1.0, pitch = 128.0)
@@ -82,7 +85,13 @@ class FeedbackController(
         }
     }
 
-    fun speak(text: String) {
+    fun speak(text: String, clips: List<RobotClip> = emptyList()) {
+        if (clips.isNotEmpty()) {
+            voiceExecutor.execute {
+                playClipSequence(clips)
+            }
+            return
+        }
         if (ttsReady) {
             textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "robot_move")
         } else {
@@ -108,6 +117,7 @@ class FeedbackController(
         textToSpeech.stop()
         textToSpeech.shutdown()
         audioExecutor.shutdownNow()
+        voiceExecutor.shutdownNow()
     }
 
     private fun playPcm(samples: ShortArray) {
@@ -150,6 +160,46 @@ class FeedbackController(
             val mixed = (transient + resonance + knock) * strength
             (mixed.coerceIn(-1.0, 1.0) * Short.MAX_VALUE).toInt().toShort()
         }
+    }
+
+    private fun playClipSequence(clips: List<RobotClip>) {
+        clips.forEach { clip ->
+            val resId = clipResId(clip)
+            val mediaPlayer = MediaPlayer.create(context, resId) ?: return@forEach
+            mediaPlayer.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_GAME)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build(),
+            )
+            try {
+                mediaPlayer.start()
+                while (mediaPlayer.isPlaying) {
+                    Thread.sleep(30)
+                }
+            } finally {
+                mediaPlayer.release()
+            }
+            Thread.sleep(70)
+        }
+    }
+
+    private fun clipResId(clip: RobotClip): Int = when (clip) {
+        RobotClip.THINKING -> R.raw.robot_thinking
+        RobotClip.HORSE -> R.raw.robot_horse
+        RobotClip.ELEPHANT -> R.raw.robot_elephant
+        RobotClip.ROOK -> R.raw.robot_rook
+        RobotClip.CANNON -> R.raw.robot_cannon
+        RobotClip.PAWN -> R.raw.robot_pawn
+        RobotClip.GUARD -> R.raw.robot_guard
+        RobotClip.GENERAL -> R.raw.robot_general
+        RobotClip.CHECK -> R.raw.robot_check
+        RobotClip.CAPTURE -> R.raw.robot_capture
+        RobotClip.TAUNT -> R.raw.robot_taunt
+        RobotClip.STEADY -> R.raw.robot_steady
+        RobotClip.DEEP -> R.raw.robot_deep
+        RobotClip.GAIN -> R.raw.robot_gain
+        RobotClip.CALM -> R.raw.robot_calm
     }
 
     private companion object {
