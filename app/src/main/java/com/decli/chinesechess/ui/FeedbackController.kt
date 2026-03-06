@@ -13,6 +13,7 @@ import android.speech.tts.TextToSpeech
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.decli.chinesechess.R
+import com.decli.chinesechess.debug.DebugLogger
 import com.decli.chinesechess.game.RobotClip
 import com.decli.chinesechess.game.Side
 import java.util.Locale
@@ -66,11 +67,14 @@ class FeedbackController(
             ttsReady = localeResult != null
             textToSpeech.setPitch(0.95f)
             textToSpeech.setSpeechRate(0.92f)
+            DebugLogger.log("TTS", "init_success ready=$ttsReady")
             if (ttsReady) {
                 while (pendingSpeech.isNotEmpty()) {
                     textToSpeech.speak(pendingSpeech.removeFirst(), TextToSpeech.QUEUE_ADD, null, "robot_move_queue")
                 }
             }
+        } else {
+            DebugLogger.log("TTS", "init_failed status=$status")
         }
     }
 
@@ -81,20 +85,24 @@ class FeedbackController(
             else -> normalMoveSamples
         }
         audioExecutor.execute {
+            DebugLogger.log("SFX", "play_move side=${side.name} capture=$capture")
             playPcm(samples)
         }
     }
 
     fun speak(text: String, clips: List<RobotClip> = emptyList()) {
         if (clips.isNotEmpty()) {
+            DebugLogger.log("VOICE", "play_clips clips=${clips.joinToString(",")}")
             voiceExecutor.execute {
                 playClipSequence(clips)
             }
             return
         }
         if (ttsReady) {
+            DebugLogger.log("VOICE", "speak_tts text=$text")
             textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "robot_move")
         } else {
+            DebugLogger.log("VOICE", "queue_tts text=$text")
             pendingSpeech += text
         }
     }
@@ -173,10 +181,12 @@ class FeedbackController(
                     .build(),
             )
             try {
+                DebugLogger.log("VOICE", "clip_start clip=${clip.name} res=$resId")
                 mediaPlayer.start()
                 while (mediaPlayer.isPlaying) {
                     Thread.sleep(30)
                 }
+                DebugLogger.log("VOICE", "clip_done clip=${clip.name}")
             } finally {
                 mediaPlayer.release()
             }

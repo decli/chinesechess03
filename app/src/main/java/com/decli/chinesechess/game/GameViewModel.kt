@@ -3,6 +3,7 @@ package com.decli.chinesechess.game
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.decli.chinesechess.debug.DebugLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -36,6 +37,7 @@ sealed interface GameEvent {
     data class PlayMoveSound(val side: Side, val capture: Boolean) : GameEvent
     data class Speak(val text: String, val clips: List<RobotClip> = emptyList()) : GameEvent
     data class Notify(val title: String, val text: String) : GameEvent
+    data object ExportDebugLog : GameEvent
 }
 
 enum class RobotClip {
@@ -81,6 +83,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     val events: SharedFlow<GameEvent> = _events.asSharedFlow()
 
     init {
+        DebugLogger.log("VM", "init restored_moves=${history.size - 1}")
         if (history.last().sideToMove == Side.BLACK && _uiState.value.winner == null) {
             scheduleAiTurn()
         } else {
@@ -100,6 +103,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         if (selectedSquare != null) {
             val move = engine.legalMovesForSquare(state.position, selectedSquare).firstOrNull { it.to == square }
             if (move != null) {
+                DebugLogger.log("MOVE", "player ${formatMove(move)} capture=${move.isCapture}")
                 commitMove(move, side = Side.RED, banner = "你走 ${formatMove(move)}。")
                 scheduleAiTurn()
                 return
@@ -192,17 +196,25 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleSound() {
         _uiState.update { it.copy(soundEnabled = !it.soundEnabled) }
+        DebugLogger.log("SETTINGS", "sound=${_uiState.value.soundEnabled}")
         persistGame()
     }
 
     fun toggleTts() {
         _uiState.update { it.copy(ttsEnabled = !it.ttsEnabled) }
+        DebugLogger.log("SETTINGS", "tts=${_uiState.value.ttsEnabled}")
         persistGame()
     }
 
     fun toggleNotifications() {
         _uiState.update { it.copy(notificationsEnabled = !it.notificationsEnabled) }
+        DebugLogger.log("SETTINGS", "notifications=${_uiState.value.notificationsEnabled}")
         persistGame()
+    }
+
+    fun exportDebugLog() {
+        DebugLogger.log("EXPORT", "requested_by_user")
+        _events.tryEmit(GameEvent.ExportDebugLog)
     }
 
     private fun scheduleAiTurn() {
@@ -221,6 +233,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 banner = "电脑正在思考，请稍候……",
             )
         }
+        DebugLogger.log("AI", "thinking difficulty=${_uiState.value.difficulty.name} moves=${history.size - 1}")
         _events.tryEmit(GameEvent.Speak("让我想想怎么走。", clips = listOf(RobotClip.THINKING)))
 
         aiJob = viewModelScope.launch(Dispatchers.Default) {
@@ -242,6 +255,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             val nextPosition = engine.applyMove(position, move)
             val commentary = robotLine(move, nextPosition, result.depthReached)
             val line = commentary.text
+            DebugLogger.log(
+                "AI",
+                "move=${formatMove(move)} depth=${result.depthReached} nodes=${result.nodes} clips=${commentary.clips.joinToString(",")}",
+            )
             commitMove(move, side = Side.BLACK, banner = line)
             _events.tryEmit(GameEvent.Speak(line, clips = commentary.clips))
             _events.tryEmit(GameEvent.Notify("象棋乐斗", line))
@@ -264,6 +281,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 banner = if (winner == null) banner else "${winner.title}。${banner.takeIf { message -> message.isNotBlank() } ?: ""}".trim(),
             )
         }
+        DebugLogger.log("STATE", "commit side=${side.name} capture=${move.isCapture} winner=${winner?.name ?: "none"}")
         _events.tryEmit(GameEvent.PlayMoveSound(side = side, capture = move.isCapture))
         persistGame()
     }
@@ -340,6 +358,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val savedGame = storage.load()
         if (savedGame == null) {
             history += XiangqiStartPosition.create()
+            DebugLogger.log("SAVE", "no_saved_game")
             return null
         }
 
@@ -350,6 +369,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             position = engine.applyMove(position, move)
             history += position
         }
+        DebugLogger.log("SAVE", "restored moves=${savedGame.moves.size} difficulty=${savedGame.difficulty.name}")
         return savedGame
     }
 
@@ -364,6 +384,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 notificationsEnabled = state.notificationsEnabled,
             ),
         )
+        DebugLogger.log("SAVE", "persisted moves=${history.size - 1}")
     }
 
     private data class RobotCommentary(

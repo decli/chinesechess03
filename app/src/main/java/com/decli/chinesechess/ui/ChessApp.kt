@@ -1,8 +1,10 @@
 package com.decli.chinesechess.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -28,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.TipsAndUpdates
@@ -63,8 +66,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.decli.chinesechess.BuildConfig
+import com.decli.chinesechess.debug.DebugLogger
 import com.decli.chinesechess.game.BOARD_FILES
 import com.decli.chinesechess.game.BOARD_RANKS
 import com.decli.chinesechess.game.Difficulty
@@ -122,6 +128,22 @@ fun ChineseChessApp(
                 is GameEvent.Notify -> if (latestState.notificationsEnabled) {
                     feedbackController.notify(event.text, notificationsGranted)
                 }
+                GameEvent.ExportDebugLog -> {
+                    val file = DebugLogger.export(context)
+                    val uri = FileProvider.getUriForFile(
+                        context,
+                        "${BuildConfig.APPLICATION_ID}.fileprovider",
+                        file,
+                    )
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_SUBJECT, "象棋乐斗调试日志")
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "导出调试日志"))
+                    Toast.makeText(context, "已生成调试日志，可直接发给我。", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -153,6 +175,7 @@ fun ChineseChessApp(
                 onDifficultyChange = viewModel::setDifficulty,
                 onToggleSound = viewModel::toggleSound,
                 onToggleTts = viewModel::toggleTts,
+                onExportLog = viewModel::exportDebugLog,
                 onToggleNotifications = {
                     if (!notificationsGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -175,6 +198,7 @@ private fun ChessScreen(
     onDifficultyChange: (Difficulty) -> Unit,
     onToggleSound: () -> Unit,
     onToggleTts: () -> Unit,
+    onExportLog: () -> Unit,
     onToggleNotifications: () -> Unit,
 ) {
     val configuration = LocalConfiguration.current
@@ -219,6 +243,7 @@ private fun ChessScreen(
                     onDifficultyChange = onDifficultyChange,
                     onToggleSound = onToggleSound,
                     onToggleTts = onToggleTts,
+                    onExportLog = onExportLog,
                     onToggleNotifications = onToggleNotifications,
                     modifier = Modifier.width(332.dp),
                 )
@@ -252,6 +277,7 @@ private fun ChessScreen(
                     onDifficultyChange = onDifficultyChange,
                     onToggleSound = onToggleSound,
                     onToggleTts = onToggleTts,
+                    onExportLog = onExportLog,
                     onToggleNotifications = onToggleNotifications,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -270,6 +296,7 @@ private fun ControlPanel(
     onDifficultyChange: (Difficulty) -> Unit,
     onToggleSound: () -> Unit,
     onToggleTts: () -> Unit,
+    onExportLog: () -> Unit,
     onToggleNotifications: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -354,6 +381,11 @@ private fun ControlPanel(
                     ToggleTile("音效", Icons.AutoMirrored.Filled.VolumeUp, state.soundEnabled, onToggleSound, Modifier.weight(1f))
                     ToggleTile("语音", Icons.Default.RecordVoiceOver, state.ttsEnabled, onToggleTts, Modifier.weight(1f))
                     ToggleTile("通知", Icons.Default.RecordVoiceOver, state.notificationsEnabled, onToggleNotifications, Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ActionTile("导出日志", Icons.Default.BugReport, true, onExportLog, Modifier.weight(1f))
+                    Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.weight(1f))
                 }
             }
         }
