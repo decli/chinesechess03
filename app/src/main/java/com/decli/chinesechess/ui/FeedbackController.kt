@@ -65,8 +65,8 @@ class FeedbackController(
                 }
             }
             ttsReady = localeResult != null
-            textToSpeech.setPitch(0.95f)
-            textToSpeech.setSpeechRate(0.92f)
+            textToSpeech.setPitch(1.03f)
+            textToSpeech.setSpeechRate(1.18f)
             DebugLogger.log("TTS", "init_success ready=$ttsReady")
             if (ttsReady) {
                 while (pendingSpeech.isNotEmpty()) {
@@ -91,19 +91,19 @@ class FeedbackController(
     }
 
     fun speak(text: String, clips: List<RobotClip> = emptyList()) {
-        if (clips.isNotEmpty()) {
-            DebugLogger.log("VOICE", "play_clips clips=${clips.joinToString(",")}")
-            voiceExecutor.execute {
-                playClipSequence(clips)
-            }
-            return
-        }
         if (ttsReady) {
             DebugLogger.log("VOICE", "speak_tts text=$text")
             textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "robot_move")
         } else {
-            DebugLogger.log("VOICE", "queue_tts text=$text")
-            pendingSpeech += text
+            if (clips.isNotEmpty()) {
+                DebugLogger.log("VOICE", "fallback_clips clips=${clips.joinToString(",")}")
+                voiceExecutor.execute {
+                    playClipSequence(clips)
+                }
+            } else {
+                DebugLogger.log("VOICE", "queue_tts text=$text")
+                pendingSpeech += text
+            }
         }
     }
 
@@ -182,6 +182,9 @@ class FeedbackController(
             )
             try {
                 DebugLogger.log("VOICE", "clip_start clip=${clip.name} res=$resId")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    mediaPlayer.playbackParams = mediaPlayer.playbackParams.setSpeed(1.22f)
+                }
                 mediaPlayer.start()
                 while (mediaPlayer.isPlaying) {
                     Thread.sleep(30)
@@ -190,12 +193,11 @@ class FeedbackController(
             } finally {
                 mediaPlayer.release()
             }
-            Thread.sleep(70)
+            Thread.sleep(15)
         }
     }
 
     private fun clipResId(clip: RobotClip): Int = when (clip) {
-        RobotClip.THINKING -> R.raw.robot_thinking
         RobotClip.HORSE -> R.raw.robot_horse
         RobotClip.ELEPHANT -> R.raw.robot_elephant
         RobotClip.ROOK -> R.raw.robot_rook

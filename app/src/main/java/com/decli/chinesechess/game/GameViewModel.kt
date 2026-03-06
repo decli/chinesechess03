@@ -41,7 +41,6 @@ sealed interface GameEvent {
 }
 
 enum class RobotClip {
-    THINKING,
     HORSE,
     ELEPHANT,
     ROOK,
@@ -234,8 +233,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         DebugLogger.log("AI", "thinking difficulty=${_uiState.value.difficulty.name} moves=${history.size - 1}")
-        _events.tryEmit(GameEvent.Speak("让我想想怎么走。", clips = listOf(RobotClip.THINKING)))
-
         aiJob = viewModelScope.launch(Dispatchers.Default) {
             val position = _uiState.value.position
             val result = ai.findBestMove(position, _uiState.value.difficulty)
@@ -292,8 +289,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun robotLine(move: Move, nextPosition: Position, depth: Int): RobotCommentary {
         val clips = mutableListOf<RobotClip>()
-        val pieces = mutableListOf<String>()
-
         val actionClip = when (PieceCodec.typeOf(move.movedPiece)) {
             PieceType.HORSE -> RobotClip.HORSE
             PieceType.ELEPHANT -> RobotClip.ELEPHANT
@@ -305,37 +300,62 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             null -> RobotClip.TAUNT
         }
         clips += actionClip
-        pieces += when (actionClip) {
-            RobotClip.HORSE -> "我跳马。"
-            RobotClip.ELEPHANT -> "我飞象。"
-            RobotClip.ROOK -> "我出车。"
-            RobotClip.CANNON -> "我架炮。"
-            RobotClip.PAWN -> "我拱兵。"
-            RobotClip.GUARD -> "我补士。"
-            RobotClip.GENERAL -> "我挪帅。"
+
+        val actionText = when (actionClip) {
+            RobotClip.HORSE -> listOf("我跳马，先把节奏带起来。", "马先跳起来，这路就活了。").random(rng)
+            RobotClip.ELEPHANT -> listOf("我飞象，把阵型补稳。", "象先飞过去，后面更从容。").random(rng)
+            RobotClip.ROOK -> listOf("我出车，先压你一路。", "车一出来，味道就不一样了。").random(rng)
+            RobotClip.CANNON -> listOf("我架炮，先给你点压力。", "炮位先架好，后手就多了。").random(rng)
+            RobotClip.PAWN -> listOf("我拱兵，慢慢把空间拿回来。", "这兵先拱一下，局面更紧。").random(rng)
+            RobotClip.GUARD -> listOf("我补士，先把中宫护住。", "先补一手士，别想轻松进来。").random(rng)
+            RobotClip.GENERAL -> listOf("我挪帅，先站个更舒服的位置。", "帅先挪一步，后面更稳。").random(rng)
             else -> "这步我先走了。"
         }
 
-        if (engine.isInCheck(nextPosition.board, nextPosition.sideToMove)) {
-            clips += RobotClip.CHECK
-            pieces += "我将军。"
+        val check = engine.isInCheck(nextPosition.board, nextPosition.sideToMove)
+        val outcomeText = when {
+            check && move.isCapture -> {
+                clips += RobotClip.CHECK
+                "顺手还打你一子，再送你一声将军。"
+            }
+            check -> {
+                clips += RobotClip.CHECK
+                "这步直接将军，你得先应一下。"
+            }
+            move.isCapture -> {
+                val clip = listOf(RobotClip.CAPTURE, RobotClip.GAIN).random(rng)
+                clips += clip
+                if (clip == RobotClip.CAPTURE) {
+                    "这颗子我就收下了。"
+                } else {
+                    "这步我先赚一颗。"
+                }
+            }
+            else -> {
+                val clip = listOf(RobotClip.STEADY, RobotClip.CALM, RobotClip.TAUNT).random(rng)
+                clips += clip
+                when (clip) {
+                    RobotClip.STEADY -> "先稳一手，不着急。"
+                    RobotClip.CALM -> "别急，我后面还有安排。"
+                    else -> "看好了，后手还在。"
+                }
+            }
         }
 
-        if (move.isCapture) {
-            val captureClip = listOf(RobotClip.CAPTURE, RobotClip.GAIN).random(rng)
-            clips += captureClip
-            pieces += if (captureClip == RobotClip.CAPTURE) "我打你。" else "这步我赚到了。"
+        val confidenceText = if (depth >= 5) {
+            clips += RobotClip.DEEP
+            "这步我算得比较深。"
         } else {
-            val tauntClip = listOf(RobotClip.TAUNT, RobotClip.CALM).random(rng)
-            clips += tauntClip
-            pieces += if (tauntClip == RobotClip.TAUNT) "看好了。" else "别急，我还在算。"
+            ""
         }
-
-        val depthClip = if (depth >= 5) RobotClip.DEEP else RobotClip.STEADY
-        clips += depthClip
-        pieces += if (depthClip == RobotClip.DEEP) "这步我算得很深。" else "先稳一手。"
-
-        return RobotCommentary(text = pieces.joinToString(""), clips = clips)
+        return RobotCommentary(
+            text = buildString {
+                append(actionText)
+                append(outcomeText)
+                append(confidenceText)
+            },
+            clips = clips.distinct(),
+        )
     }
 
     private fun formatMove(move: Move): String {
