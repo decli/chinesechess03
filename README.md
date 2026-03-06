@@ -28,7 +28,7 @@
 
 - `app/src/main/java/com/decli/chinesechess/game`：规则、AI、存档、ViewModel
 - `app/src/main/java/com/decli/chinesechess/ui`：Compose 界面、通知、语音、音效
-- `../.github/workflows/android-apk.yml`：APK 构建和发布流程
+- `.github/workflows/android-apk.yml`：APK 构建和发布流程
 
 ## 本地构建
 
@@ -61,4 +61,3 @@ app/build/outputs/apk/release/app-release.apk
 - 默认锁定横屏，更适合 14 寸平板把棋盘高度拉满。
 - AI 默认执黑，用户执红先手。
 - 高难度依旧受时间/节点限制，不会无限搜索。
-- 根仓库首页 README 用于 GitHub 展示，实际 Android 工程位于当前目录。
