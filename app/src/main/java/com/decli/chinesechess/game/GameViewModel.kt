@@ -1,6 +1,7 @@
 package com.decli.chinesechess.game
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,18 +38,37 @@ sealed interface GameEvent {
     data class Notify(val title: String, val text: String) : GameEvent
 }
 
-class GameViewModel : ViewModel() {
+class GameViewModel(application: Application) : AndroidViewModel(application) {
     private val engine = XiangqiEngine
     private val ai = XiangqiAi(engine)
     private val rng = Random(20260306)
-    private val history = mutableListOf(XiangqiStartPosition.create())
+    private val storage = GameStorage(application.applicationContext)
+    private val history = mutableListOf<Position>()
     private var aiJob: Job? = null
+    private val restoredGame = restoreSavedGame()
 
-    private val _uiState = MutableStateFlow(GameUiState(position = history.last()))
+    private val _uiState = MutableStateFlow(
+        GameUiState(
+            position = history.last(),
+            difficulty = restoredGame?.difficulty ?: Difficulty.MEDIUM,
+            banner = if ((restoredGame?.moves?.isNotEmpty() == true)) "已恢复上次对局。请继续。" else "中级电脑已就位，请先手。",
+            soundEnabled = restoredGame?.soundEnabled ?: true,
+            ttsEnabled = restoredGame?.ttsEnabled ?: true,
+            notificationsEnabled = restoredGame?.notificationsEnabled ?: true,
+        ),
+    )
     val uiState: StateFlow<GameUiState> = _uiState.asStateFlow()
 
     private val _events = MutableSharedFlow<GameEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<GameEvent> = _events.asSharedFlow()
+
+    init {
+        if (history.last().sideToMove == Side.BLACK && _uiState.value.winner == null) {
+            scheduleAiTurn()
+        } else {
+            persistGame()
+        }
+    }
 
     fun onSquareTapped(square: Int) {
         val state = _uiState.value
@@ -101,6 +121,7 @@ class GameViewModel : ViewModel() {
             ttsEnabled = _uiState.value.ttsEnabled,
             notificationsEnabled = _uiState.value.notificationsEnabled,
         )
+        persistGame()
         if (restored.sideToMove == Side.BLACK) {
             scheduleAiTurn()
         }
@@ -118,6 +139,7 @@ class GameViewModel : ViewModel() {
             ttsEnabled = _uiState.value.ttsEnabled,
             notificationsEnabled = _uiState.value.notificationsEnabled,
         )
+        persistGame()
     }
 
     fun requestHint() {
@@ -147,18 +169,22 @@ class GameViewModel : ViewModel() {
                 hintMove = null,
             )
         }
+        persistGame()
     }
 
     fun toggleSound() {
         _uiState.update { it.copy(soundEnabled = !it.soundEnabled) }
+        persistGame()
     }
 
     fun toggleTts() {
         _uiState.update { it.copy(ttsEnabled = !it.ttsEnabled) }
+        persistGame()
     }
 
     fun toggleNotifications() {
         _uiState.update { it.copy(notificationsEnabled = !it.notificationsEnabled) }
+        persistGame()
     }
 
     private fun scheduleAiTurn() {
@@ -177,6 +203,7 @@ class GameViewModel : ViewModel() {
                 banner = "电脑正在思考，请稍候……",
             )
         }
+        _events.tryEmit(GameEvent.Speak("让我想想怎么走。"))
 
         aiJob = viewModelScope.launch(Dispatchers.Default) {
             val position = _uiState.value.position
@@ -194,7 +221,8 @@ class GameViewModel : ViewModel() {
                 return@launch
             }
 
-            val line = robotLine(move, result.depthReached)
+            val nextPosition = engine.applyMove(position, move)
+            val line = robotLine(move, nextPosition, result.depthReached)
             commitMove(move, side = Side.BLACK, banner = line)
             _events.tryEmit(GameEvent.Speak(line))
             _events.tryEmit(GameEvent.Notify("象棋乐斗", line))
@@ -218,24 +246,40 @@ class GameViewModel : ViewModel() {
             )
         }
         _events.tryEmit(GameEvent.PlayMoveSound(side = side, capture = move.isCapture))
+        persistGame()
     }
 
     private fun clearSelection() {
         _uiState.update { it.copy(selectedSquare = null, legalTargets = emptySet()) }
     }
 
-    private fun robotLine(move: Move, depth: Int): String {
-        val capturePart = if (move.isCapture) {
-            listOf("这一口吃得很稳。", "这步顺手收子。", "这枚棋子我先借走了。").random(rng)
+    private fun robotLine(move: Move, nextPosition: Position, depth: Int): String {
+        val actionPart = when (PieceCodec.typeOf(move.movedPiece)) {
+            PieceType.HORSE -> "我跳马。"
+            PieceType.ELEPHANT -> "我飞象。"
+            PieceType.ROOK -> "我出车。"
+            PieceType.CANNON -> "我架炮。"
+            PieceType.PAWN -> "我拱兵。"
+            PieceType.ADVISOR -> "我补士。"
+            PieceType.GENERAL -> "我挪帅。"
+            null -> "这步我先走了。"
+        }
+        val checkPart = if (engine.isInCheck(nextPosition.board, nextPosition.sideToMove)) {
+            "将军。"
         } else {
-            listOf("先给你垫个节奏。", "这步下得有点老辣。", "我先把局面收紧一点。").random(rng)
+            ""
+        }
+        val capturePart = if (move.isCapture) {
+            listOf("我打你。", "这颗子我收下了。", "这步我赚到了。").random(rng)
+        } else {
+            listOf("看好了。", "别急，我还在算。", "局面开始往我这边靠了。").random(rng)
         }
         val depthPart = when {
-            depth >= 6 -> "我已经往后多看了几层。"
-            depth >= 4 -> "这步是认真算过的。"
-            else -> "先走稳当些。"
+            depth >= 6 -> "这步我算得很深。"
+            depth >= 4 -> "这步是认真推过的。"
+            else -> "先稳一手。"
         }
-        return "电脑走 ${formatMove(move)}。$capturePart$depthPart"
+        return "让我想想。$actionPart$checkPart$capturePart$depthPart"
     }
 
     private fun formatMove(move: Move): String {
@@ -252,5 +296,35 @@ class GameViewModel : ViewModel() {
     override fun onCleared() {
         aiJob?.cancel()
         super.onCleared()
+    }
+
+    private fun restoreSavedGame(): SavedGame? {
+        val savedGame = storage.load()
+        if (savedGame == null) {
+            history += XiangqiStartPosition.create()
+            return null
+        }
+
+        history.clear()
+        var position = XiangqiStartPosition.create()
+        history += position
+        savedGame.moves.forEach { move ->
+            position = engine.applyMove(position, move)
+            history += position
+        }
+        return savedGame
+    }
+
+    private fun persistGame() {
+        val state = _uiState.value
+        storage.save(
+            SavedGame(
+                moves = history.drop(1).mapNotNull { it.lastMove },
+                difficulty = state.difficulty,
+                soundEnabled = state.soundEnabled,
+                ttsEnabled = state.ttsEnabled,
+                notificationsEnabled = state.notificationsEnabled,
+            ),
+        )
     }
 }

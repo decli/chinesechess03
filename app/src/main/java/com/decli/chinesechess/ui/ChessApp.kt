@@ -128,10 +128,10 @@ fun ChineseChessApp(
 
     val colorScheme = androidx.compose.material3.lightColorScheme(
         primary = Color(0xFF8E2E18),
-        secondary = Color(0xFF385B48),
-        tertiary = Color(0xFFA56A1F),
-        background = Color(0xFFF2E5C8),
-        surface = Color(0xFFFFF7E9),
+        secondary = Color(0xFF496053),
+        tertiary = Color(0xFF8B6B3C),
+        background = Color(0xFFD6DAD0),
+        surface = Color(0xFFF3EFE5),
         onPrimary = Color.White,
         onSecondary = Color.White,
         onBackground = Color(0xFF2A1A12),
@@ -185,7 +185,7 @@ private fun ChessScreen(
             .fillMaxSize()
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFFF4E9CF), Color(0xFFE3C893)),
+                    colors = listOf(Color(0xFFD7DBD2), Color(0xFFB4BCAF)),
                 ),
             )
             .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -278,7 +278,7 @@ private fun ControlPanel(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFFDF6E6)),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF4F0E6)),
             shape = RoundedCornerShape(28.dp),
         ) {
             Column(
@@ -310,7 +310,7 @@ private fun ControlPanel(
         }
 
         Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBF3)),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF6F2E9)),
             shape = RoundedCornerShape(24.dp),
         ) {
             Column(
@@ -338,7 +338,7 @@ private fun ControlPanel(
         }
 
         Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBF3)),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF6F2E9)),
             shape = RoundedCornerShape(24.dp),
         ) {
             Column(
@@ -373,7 +373,7 @@ private fun ActionTile(
             .height(92.dp)
             .clickable(enabled = enabled, onClick = onClick),
         colors = CardDefaults.cardColors(
-            containerColor = if (enabled) Color(0xFFEEE2C2) else Color(0xFFD9D1C2),
+            containerColor = if (enabled) Color(0xFFE8DFC8) else Color(0xFFD2CEC3),
         ),
         shape = RoundedCornerShape(24.dp),
     ) {
@@ -406,7 +406,7 @@ private fun ToggleTile(
                 shape = RoundedCornerShape(24.dp),
             )
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7E9)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF4EFE4)),
         shape = RoundedCornerShape(24.dp),
     ) {
         Column(
