@@ -45,6 +45,24 @@ class XiangqiEngineTest {
     }
 
     @Test
+    fun horseCheckMustBeAnsweredBeforeMovingOtherPieces() {
+        val board = IntArray(BOARD_SIZE)
+        put(board, 4, 9, Side.RED, PieceType.GENERAL)
+        put(board, 0, 8, Side.RED, PieceType.ROOK)
+        put(board, 4, 0, Side.BLACK, PieceType.GENERAL)
+        put(board, 3, 7, Side.BLACK, PieceType.HORSE)
+
+        val position = Position(board = board, sideToMove = Side.RED)
+        val legalMoves = XiangqiEngine.generateLegalMoves(position)
+
+        assertTrue("red general should be in horse check", XiangqiEngine.isInCheck(position.board, Side.RED))
+        assertFalse(
+            "an unrelated rook move must be illegal while the general is checked by a horse",
+            legalMoves.any { move -> move.from == squareOf(0, 8) && move.to == squareOf(0, 7) },
+        )
+    }
+
+    @Test
     fun hardAiFinishesLoneKingMateInsteadOfShuffling() {
         val board = IntArray(BOARD_SIZE)
         put(board, 4, 9, Side.RED, PieceType.GENERAL)

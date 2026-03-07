@@ -106,8 +106,8 @@ object XiangqiEngine {
         for (offset in horseOffsets) {
             val sourceFile = targetFile - offset[0]
             val sourceRank = targetRank - offset[1]
-            val legFile = targetFile - offset[2]
-            val legRank = targetRank - offset[3]
+            val legFile = sourceFile + offset[2]
+            val legRank = sourceRank + offset[3]
             if (!insideBoard(sourceFile, sourceRank) || !insideBoard(legFile, legRank)) {
                 continue
             }
