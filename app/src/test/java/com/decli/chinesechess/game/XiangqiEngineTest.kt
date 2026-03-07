@@ -52,14 +52,51 @@ class XiangqiEngineTest {
         put(board, 4, 0, Side.BLACK, PieceType.GENERAL)
         put(board, 3, 7, Side.BLACK, PieceType.HORSE)
 
-        val position = Position(board = board, sideToMove = Side.RED)
-        val legalMoves = XiangqiEngine.generateLegalMoves(position)
+        assertCheckMustBeAnswered(board, "horse")
+    }
 
-        assertTrue("red general should be in horse check", XiangqiEngine.isInCheck(position.board, Side.RED))
-        assertFalse(
-            "an unrelated rook move must be illegal while the general is checked by a horse",
-            legalMoves.any { move -> move.from == squareOf(0, 8) && move.to == squareOf(0, 7) },
-        )
+    @Test
+    fun rookCheckMustBeAnsweredBeforeMovingOtherPieces() {
+        val board = IntArray(BOARD_SIZE)
+        put(board, 4, 9, Side.RED, PieceType.GENERAL)
+        put(board, 0, 8, Side.RED, PieceType.ROOK)
+        put(board, 4, 0, Side.BLACK, PieceType.GENERAL)
+        put(board, 4, 5, Side.BLACK, PieceType.ROOK)
+
+        assertCheckMustBeAnswered(board, "rook")
+    }
+
+    @Test
+    fun cannonCheckMustBeAnsweredBeforeMovingOtherPieces() {
+        val board = IntArray(BOARD_SIZE)
+        put(board, 4, 9, Side.RED, PieceType.GENERAL)
+        put(board, 0, 8, Side.RED, PieceType.ROOK)
+        put(board, 4, 8, Side.RED, PieceType.ADVISOR)
+        put(board, 4, 0, Side.BLACK, PieceType.GENERAL)
+        put(board, 4, 4, Side.BLACK, PieceType.CANNON)
+
+        assertCheckMustBeAnswered(board, "cannon")
+    }
+
+    @Test
+    fun pawnCheckMustBeAnsweredBeforeMovingOtherPieces() {
+        val board = IntArray(BOARD_SIZE)
+        put(board, 4, 9, Side.RED, PieceType.GENERAL)
+        put(board, 0, 8, Side.RED, PieceType.ROOK)
+        put(board, 4, 0, Side.BLACK, PieceType.GENERAL)
+        put(board, 4, 8, Side.BLACK, PieceType.PAWN)
+
+        assertCheckMustBeAnswered(board, "pawn")
+    }
+
+    @Test
+    fun facingGeneralsCheckMustBeAnsweredBeforeMovingOtherPieces() {
+        val board = IntArray(BOARD_SIZE)
+        put(board, 4, 9, Side.RED, PieceType.GENERAL)
+        put(board, 0, 8, Side.RED, PieceType.ROOK)
+        put(board, 4, 0, Side.BLACK, PieceType.GENERAL)
+
+        assertCheckMustBeAnswered(board, "facing generals")
     }
 
     @Test
@@ -104,5 +141,16 @@ class XiangqiEngineTest {
 
     private fun put(board: IntArray, file: Int, rank: Int, side: Side, type: PieceType) {
         board[squareOf(file, rank)] = PieceCodec.make(side, type)
+    }
+
+    private fun assertCheckMustBeAnswered(board: IntArray, source: String) {
+        val position = Position(board = board, sideToMove = Side.RED)
+        val legalMoves = XiangqiEngine.generateLegalMoves(position)
+
+        assertTrue("red general should be in $source check", XiangqiEngine.isInCheck(position.board, Side.RED))
+        assertFalse(
+            "an unrelated rook move must be illegal while the general is checked by $source",
+            legalMoves.any { move -> move.from == squareOf(0, 8) && move.to == squareOf(0, 7) },
+        )
     }
 }
