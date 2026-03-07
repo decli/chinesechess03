@@ -207,6 +207,10 @@ class FeedbackController(
         RobotClip.GENERAL -> R.raw.robot_general
         RobotClip.CHECK -> R.raw.robot_check
         RobotClip.CAPTURE -> R.raw.robot_capture
+        RobotClip.EAT -> R.raw.robot_eat
+        RobotClip.RED_WIN -> R.raw.robot_red_win
+        RobotClip.BLACK_WIN -> R.raw.robot_black_win
+        RobotClip.DRAW -> R.raw.robot_draw
         RobotClip.TAUNT -> R.raw.robot_taunt
         RobotClip.STEADY -> R.raw.robot_steady
         RobotClip.DEEP -> R.raw.robot_deep

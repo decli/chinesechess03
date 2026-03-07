@@ -51,6 +51,10 @@ enum class RobotClip {
     GENERAL,
     CHECK,
     CAPTURE,
+    EAT,
+    RED_WIN,
+    BLACK_WIN,
+    DRAW,
     TAUNT,
     STEADY,
     DEEP,
@@ -252,6 +256,12 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val nextPosition = engine.applyMove(position, move)
+            val projectedWinner =
+                if (repetitionCount(history + nextPosition, nextPosition) >= 3) {
+                    Winner.DRAW
+                } else {
+                    engine.resolveWinner(nextPosition)
+                }
             val commentary = robotLine(move, nextPosition, result.depthReached)
             val line = commentary.text
             DebugLogger.log(
@@ -259,8 +269,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 "move=${formatMove(move)} depth=${result.depthReached} nodes=${result.nodes} clips=${commentary.clips.joinToString(",")}",
             )
             commitMove(move, side = Side.BLACK, banner = line)
-            _events.tryEmit(GameEvent.Speak(line, clips = commentary.clips))
-            _events.tryEmit(GameEvent.Notify(appName, line))
+            if (projectedWinner == null) {
+                _events.tryEmit(GameEvent.Speak(line, clips = commentary.clips))
+                _events.tryEmit(GameEvent.Notify(appName, line))
+            }
         }
     }
 
@@ -270,10 +282,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         history += next
         val repeated = repetitionCount(history, next) >= 3
         val winner = if (repeated) Winner.DRAW else engine.resolveWinner(next)
-        val resolvedBanner = when {
-            repeated -> "局面三次重复，判和。"
-            else -> banner
-        }
+        val resolvedBanner = winnerAnnouncement(winner, repeated) ?: banner
         _uiState.update {
             it.copy(
                 position = next,
@@ -287,6 +296,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
         DebugLogger.log("STATE", "commit side=${side.name} capture=${move.isCapture} repeated=$repeated winner=${winner?.name ?: "none"}")
         _events.tryEmit(GameEvent.PlayMoveSound(side = side, capture = move.isCapture))
+        if (winner != null) {
+            _events.tryEmit(GameEvent.Speak(resolvedBanner, winnerAnnouncementClips(winner, repeated)))
+            _events.tryEmit(GameEvent.Notify(appName, resolvedBanner))
+        }
         persistGame()
     }
 
@@ -320,22 +333,31 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val check = engine.isInCheck(nextPosition.board, nextPosition.sideToMove)
+        val cannonCapture = PieceCodec.typeOf(move.movedPiece) == PieceType.CANNON
+        val captureVerb = if (cannonCapture) "我打你" else "我吃你"
         val outcomeText = when {
             check && move.isCapture -> {
+                clips += if (cannonCapture) RobotClip.CAPTURE else RobotClip.EAT
                 clips += RobotClip.CHECK
-                "我吃你，再将军。"
+                "$captureVerb，再将军。"
             }
             check -> {
                 clips += RobotClip.CHECK
                 "将军。"
             }
             move.isCapture -> {
-                val clip = listOf(RobotClip.CAPTURE, RobotClip.GAIN).random(rng)
+                val clip = if (cannonCapture) {
+                    listOf(RobotClip.CAPTURE, RobotClip.GAIN).random(rng)
+                } else {
+                    RobotClip.EAT
+                }
                 clips += clip
                 if (clip == RobotClip.CAPTURE) {
-                    "我吃你。"
-                } else {
+                    "$captureVerb。"
+                } else if (clip == RobotClip.GAIN) {
                     "这步赚到了。"
+                } else {
+                    "$captureVerb。"
                 }
             }
             else -> ""
@@ -357,6 +379,24 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         val rank = BOARD_RANKS - rankOf(square)
         return "${file}路${rank}线"
     }
+
+    private fun winnerAnnouncement(winner: Winner?, repeated: Boolean = false): String? =
+        when {
+            repeated -> "局面三次重复，和棋。请重新开局。"
+            winner == Winner.RED -> "红方获胜。请重新开局。"
+            winner == Winner.BLACK -> "黑方获胜。请重新开局。"
+            winner == Winner.DRAW -> "和棋。请重新开局。"
+            else -> null
+        }
+
+    private fun winnerAnnouncementClips(winner: Winner?, repeated: Boolean = false): List<RobotClip> =
+        when {
+            repeated -> listOf(RobotClip.DRAW)
+            winner == Winner.RED -> listOf(RobotClip.RED_WIN)
+            winner == Winner.BLACK -> listOf(RobotClip.BLACK_WIN)
+            winner == Winner.DRAW -> listOf(RobotClip.DRAW)
+            else -> emptyList()
+        }
 
     override fun onCleared() {
         aiJob?.cancel()
