@@ -55,6 +55,16 @@ object XiangqiEngine {
     fun legalMovesForSquare(position: Position, square: Int): List<Move> =
         generateLegalMoves(position).filter { it.from == square }
 
+    fun pseudoCapturesForPiece(board: IntArray, square: Int): List<Move> {
+        val piece = board.getOrNull(square) ?: return emptyList()
+        if (piece == EMPTY) {
+            return emptyList()
+        }
+        val output = mutableListOf<Move>()
+        generatePseudoMovesForPiece(board, square, piece, output)
+        return output.filter { move -> move.isCapture }
+    }
+
     fun applyMove(position: Position, move: Move): Position {
         val nextBoard = position.copyBoard()
         nextBoard[move.to] = nextBoard[move.from]

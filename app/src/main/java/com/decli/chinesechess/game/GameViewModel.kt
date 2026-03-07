@@ -176,7 +176,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
         _uiState.update { it.copy(aiThinking = true, banner = "正在为你推演提示着法……", selectedSquare = null, legalTargets = emptySet()) }
         viewModelScope.launch(Dispatchers.Default) {
-            val result = ai.findBestMove(state.position, state.difficulty)
+            val result = ai.findBestMove(state.position, state.difficulty, history.toList())
             val hintMove = result.move
             _uiState.update {
                 it.copy(
@@ -241,7 +241,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         DebugLogger.log("AI", "thinking difficulty=${_uiState.value.difficulty.name} moves=${history.size - 1}")
         aiJob = viewModelScope.launch(Dispatchers.Default) {
             val position = _uiState.value.position
-            val result = ai.findBestMove(position, _uiState.value.difficulty)
+            val result = ai.findBestMove(position, _uiState.value.difficulty, history.toList())
             val move = result.move
             if (move == null) {
                 val winner = engine.resolveWinner(position)
