@@ -48,7 +48,12 @@ class XiangqiAi(
             }
         }
 
-        var bestMove = legalMoves.first()
+        var bestMove =
+            if (position.sideToMove == endgameProfile?.attacker && endgameProfile.favorConversion) {
+                choosePressureSeedMove(position, endgameProfile, history) ?: legalMoves.first()
+            } else {
+                legalMoves.first()
+            }
         var bestScore = Int.MIN_VALUE
         var completedDepth = 0
         var scoreGuess = 0
@@ -106,7 +111,8 @@ class XiangqiAi(
         val beta = betaInput
         var bestMove: Move? = null
         var bestScore = -MATE_SCORE
-        val orderedMoves = orderMoves(engine.generateLegalMoves(position), previousBest, 0)
+        val positionProfile = detectEndgameProfile(position)
+        val orderedMoves = orderMoves(position, engine.generateLegalMoves(position), previousBest, 0, positionProfile)
         for ((index, move) in orderedMoves.withIndex()) {
             state.step()
             val next = engine.applyMove(position, move)
@@ -184,7 +190,8 @@ class XiangqiAi(
         var bestMove: Move? = null
         var bestScore = -MATE_SCORE
         val originalAlpha = alphaInput
-        val orderedMoves = orderMoves(legalMoves, cached?.bestMove, ply)
+        val positionProfile = detectEndgameProfile(position)
+        val orderedMoves = orderMoves(position, legalMoves, cached?.bestMove, ply, positionProfile)
 
         for ((index, move) in orderedMoves.withIndex()) {
             val next = engine.applyMove(position, move)
@@ -312,11 +319,14 @@ class XiangqiAi(
 
         redScore += redGuards * 18 + redElephants * 12
         blackScore += blackGuards * 18 + blackElephants * 12
-        if (blackNonKingMaterial == 0 && redNonKingMaterial > 0) {
-            redScore += loneKingAttackBonus(position, attacker = Side.RED, defender = Side.BLACK)
-        }
-        if (redNonKingMaterial == 0 && blackNonKingMaterial > 0) {
-            blackScore += loneKingAttackBonus(position, attacker = Side.BLACK, defender = Side.RED)
+        val endgameProfile = detectEndgameProfile(position)
+        if (endgameProfile != null) {
+            val pressureBonus = conversionPressureBonus(position, endgameProfile)
+            if (endgameProfile.attacker == Side.RED) {
+                redScore += pressureBonus
+            } else {
+                blackScore += pressureBonus
+            }
         }
 
         val perspectiveScore = redScore - blackScore
@@ -376,6 +386,51 @@ class XiangqiAi(
         return bonus
     }
 
+    private fun conversionPressureBonus(
+        position: Position,
+        profile: EndgameProfile,
+    ): Int {
+        val attacker = profile.attacker
+        val defender = profile.defender
+        val defenderGeneral = engine.findGeneral(position.board, defender) ?: return 0
+        val defenderLegalMoves = engine.generateLegalMoves(position, defender).size
+        val defenderFile = fileOf(defenderGeneral)
+        val defenderRank = rankOf(defenderGeneral)
+
+        var bonus = if (profile.defenderOnlyGeneral) loneKingAttackBonus(position, attacker, defender) else 0
+        bonus += (6 - defenderLegalMoves.coerceAtMost(6)) * if (profile.defenderOnlyGeneral) 140 else 90
+        bonus += palaceControlCount(position.board, attacker, defender) * if (profile.defenderOnlyGeneral) 55 else 36
+        bonus += maxOf(0, 4 - (profile.defenderGuards + profile.defenderElephants)) * 48
+        bonus += when {
+            profile.materialAdvantage >= 1_300 -> 120
+            profile.materialAdvantage >= 850 -> 70
+            else -> 20
+        }
+
+        for (square in 0 until BOARD_SIZE) {
+            val piece = position.board[square]
+            if (PieceCodec.sideOf(piece) != attacker) {
+                continue
+            }
+            val type = PieceCodec.typeOf(piece) ?: continue
+            if (type == PieceType.GENERAL) {
+                continue
+            }
+            val distance = abs(fileOf(square) - defenderFile) + abs(rankOf(square) - defenderRank)
+            bonus += when (type) {
+                PieceType.ROOK -> maxOf(0, 10 - distance) * 18
+                PieceType.CANNON -> maxOf(0, 10 - distance) * 15
+                PieceType.HORSE -> maxOf(0, 9 - distance) * 14
+                PieceType.PAWN -> maxOf(0, 8 - distance) * 12
+                PieceType.ADVISOR,
+                PieceType.ELEPHANT,
+                -> maxOf(0, 7 - distance) * 6
+                PieceType.GENERAL -> 0
+            }
+        }
+        return bonus
+    }
+
     private fun detectEndgameProfile(position: Position): EndgameProfile? {
         var redNonKingMaterial = 0
         var blackNonKingMaterial = 0
@@ -387,6 +442,10 @@ class XiangqiAi(
         var blackHorses = 0
         var redPawns = 0
         var blackPawns = 0
+        var redGuards = 0
+        var blackGuards = 0
+        var redElephants = 0
+        var blackElephants = 0
         var redOffenseValue = 0
         var blackOffenseValue = 0
 
@@ -406,6 +465,8 @@ class XiangqiAi(
                 PieceType.CANNON -> if (side == Side.RED) redCannons++ else blackCannons++
                 PieceType.HORSE -> if (side == Side.RED) redHorses++ else blackHorses++
                 PieceType.PAWN -> if (side == Side.RED) redPawns++ else blackPawns++
+                PieceType.ADVISOR -> if (side == Side.RED) redGuards++ else blackGuards++
+                PieceType.ELEPHANT -> if (side == Side.RED) redElephants++ else blackElephants++
                 else -> Unit
             }
         }
@@ -421,17 +482,35 @@ class XiangqiAi(
                 blackHorses * PieceType.HORSE.baseValue +
                 blackPawns * PieceType.PAWN.baseValue
 
-        if (blackNonKingMaterial == 0 &&
-            hasLikelyMatingMaterial(redRooks, redCannons, redHorses, redPawns, redOffenseValue)
-        ) {
-            return endgameProfileFor(Side.RED, redOffenseValue, defenderOnlyGeneral = true)
+        val redProfile =
+            buildEndgameProfile(
+                attacker = Side.RED,
+                attackerNonKingMaterial = redNonKingMaterial,
+                defenderNonKingMaterial = blackNonKingMaterial,
+                offenseValue = redOffenseValue,
+                attackerRooks = redRooks,
+                attackerCannons = redCannons,
+                attackerHorses = redHorses,
+                attackerPawns = redPawns,
+                defenderGuards = blackGuards,
+                defenderElephants = blackElephants,
+            )
+        val blackProfile =
+            buildEndgameProfile(
+                attacker = Side.BLACK,
+                attackerNonKingMaterial = blackNonKingMaterial,
+                defenderNonKingMaterial = redNonKingMaterial,
+                offenseValue = blackOffenseValue,
+                attackerRooks = blackRooks,
+                attackerCannons = blackCannons,
+                attackerHorses = blackHorses,
+                attackerPawns = blackPawns,
+                defenderGuards = redGuards,
+                defenderElephants = redElephants,
+            )
+        return listOfNotNull(redProfile, blackProfile).maxByOrNull { profile ->
+            profile.materialAdvantage + if (profile.defenderOnlyGeneral) 2_000 else 0
         }
-        if (redNonKingMaterial == 0 &&
-            hasLikelyMatingMaterial(blackRooks, blackCannons, blackHorses, blackPawns, blackOffenseValue)
-        ) {
-            return endgameProfileFor(Side.BLACK, blackOffenseValue, defenderOnlyGeneral = true)
-        }
-        return null
     }
 
     private fun hasLikelyMatingMaterial(
@@ -448,20 +527,74 @@ class XiangqiAi(
             (pawns >= 2 && offenseValue >= 320) ||
             offenseValue >= 650
 
+    private fun buildEndgameProfile(
+        attacker: Side,
+        attackerNonKingMaterial: Int,
+        defenderNonKingMaterial: Int,
+        offenseValue: Int,
+        attackerRooks: Int,
+        attackerCannons: Int,
+        attackerHorses: Int,
+        attackerPawns: Int,
+        defenderGuards: Int,
+        defenderElephants: Int,
+    ): EndgameProfile? {
+        val defenderOnlyGeneral = defenderNonKingMaterial == 0
+        val materialAdvantage = attackerNonKingMaterial - defenderNonKingMaterial
+        if (materialAdvantage < 380) {
+            return null
+        }
+        val canPress =
+            hasLikelyMatingMaterial(attackerRooks, attackerCannons, attackerHorses, attackerPawns, offenseValue)
+        if (!canPress) {
+            return null
+        }
+        val defenderDefenders = defenderGuards + defenderElephants
+        val vulnerableDefender =
+            defenderOnlyGeneral ||
+                defenderNonKingMaterial <= 1_000 ||
+                defenderDefenders <= 2 ||
+                materialAdvantage >= 850
+        if (!vulnerableDefender) {
+            return null
+        }
+        return endgameProfileFor(
+            attacker = attacker,
+            offenseValue = offenseValue,
+            defenderOnlyGeneral = defenderOnlyGeneral,
+            materialAdvantage = materialAdvantage,
+            defenderNonKingMaterial = defenderNonKingMaterial,
+            defenderGuards = defenderGuards,
+            defenderElephants = defenderElephants,
+            favorConversion = materialAdvantage >= 550 || defenderOnlyGeneral || defenderDefenders <= 2,
+        )
+    }
+
     private fun endgameProfileFor(
         attacker: Side,
         offenseValue: Int,
         defenderOnlyGeneral: Boolean,
+        materialAdvantage: Int,
+        defenderNonKingMaterial: Int,
+        defenderGuards: Int,
+        defenderElephants: Int,
+        favorConversion: Boolean,
     ): EndgameProfile {
         val pressureFactor = when {
-            offenseValue >= 1_600 -> 3
-            offenseValue >= 900 -> 2
+            defenderOnlyGeneral -> 3
+            materialAdvantage >= 1_300 || offenseValue >= 1_600 -> 3
+            materialAdvantage >= 750 || offenseValue >= 900 -> 2
             else -> 1
         }
         return EndgameProfile(
             attacker = attacker,
             defender = attacker.opposite(),
             defenderOnlyGeneral = defenderOnlyGeneral,
+            materialAdvantage = materialAdvantage,
+            defenderNonKingMaterial = defenderNonKingMaterial,
+            defenderGuards = defenderGuards,
+            defenderElephants = defenderElephants,
+            favorConversion = favorConversion,
             extraDepth = 1 + pressureFactor,
             extraNodeBudget = 40_000 * pressureFactor,
             extraTimeMillis = 120L * pressureFactor,
@@ -512,13 +645,25 @@ class XiangqiAi(
         return null
     }
 
+    private fun choosePressureSeedMove(
+        position: Position,
+        profile: EndgameProfile,
+        history: List<Position>,
+    ): Move? {
+        val state = MateSearchState(deadlineNanos = Long.MAX_VALUE, nodeLimit = Int.MAX_VALUE)
+        normalizedHistory(history, position).forEach { previous ->
+            state.push(positionHash(previous), previous.sideToMove)
+        }
+        return generatePressureMoves(position, profile, state, root = true).firstOrNull()
+    }
+
     private fun mateSearchRoot(
         position: Position,
         profile: EndgameProfile,
         depth: Int,
         state: MateSearchState,
     ): Move? {
-        val moves = generateLoneKingAttackerMoves(position, profile, state, root = true)
+        val moves = generatePressureMoves(position, profile, state, root = true)
         val attackerWinner = winnerFor(profile.attacker)
         for (move in moves) {
             state.step()
@@ -558,7 +703,7 @@ class XiangqiAi(
         val attackerToMove = position.sideToMove == profile.attacker
         val legalMoves =
             if (attackerToMove) {
-                generateLoneKingAttackerMoves(position, profile, state, root = false)
+                generatePressureMoves(position, profile, state, root = false)
             } else {
                 engine.generateLegalMoves(position)
             }
@@ -599,7 +744,7 @@ class XiangqiAi(
         }
     }
 
-    private fun generateLoneKingAttackerMoves(
+    private fun generatePressureMoves(
         position: Position,
         profile: EndgameProfile,
         state: MateSearchState,
@@ -616,12 +761,12 @@ class XiangqiAi(
                     val givesCheck = engine.isInCheck(next.board, defender)
                     val immediateWin = engine.resolveWinner(next) == winnerFor(profile.attacker)
                     val nextMobility = if (immediateWin) 0 else engine.generateLegalMoves(next, defender).size
-                    ScoredLoneKingMove(
+                    ScoredPressureMove(
                         move = move,
                         givesCheck = givesCheck,
                         immediateWin = immediateWin,
                         score =
-                            scoreLoneKingMove(
+                            scorePressureMove(
                                 next = next,
                                 move = move,
                                 profile = profile,
@@ -651,7 +796,7 @@ class XiangqiAi(
         return selected.distinctBy { candidate -> candidate.move.from * BOARD_SIZE + candidate.move.to }.map { candidate -> candidate.move }
     }
 
-    private fun scoreLoneKingMove(
+    private fun scorePressureMove(
         next: Position,
         move: Move,
         profile: EndgameProfile,
@@ -665,13 +810,14 @@ class XiangqiAi(
         val defender = profile.defender
         val defenderGeneral = engine.findGeneral(next.board, defender) ?: return if (immediateWin) MATE_SCORE else 0
         val movedType = PieceCodec.typeOf(move.movedPiece)
+        val capturedType = PieceCodec.typeOf(move.capturedPiece)
         val distance =
             abs(fileOf(move.to) - fileOf(defenderGeneral)) +
                 abs(rankOf(move.to) - rankOf(defenderGeneral))
 
-        var score = loneKingAttackBonus(next, attacker, defender) * 10
-        score += (currentMobility - nextMobility) * 18_000
-        score += palaceControlCount(next.board, attacker, defender) * 4_200
+        var score = conversionPressureBonus(next, profile) * 10
+        score += (currentMobility - nextMobility) * if (profile.defenderOnlyGeneral) 18_000 else 12_000
+        score += palaceControlCount(next.board, attacker, defender) * if (profile.defenderOnlyGeneral) 4_200 else 2_600
         score += maxOf(0, 12 - distance) * 800
         if (givesCheck) {
             score += 220_000
@@ -680,7 +826,10 @@ class XiangqiAi(
             score += 1_000_000
         }
         if (move.isCapture) {
-            score += 24_000
+            score += 24_000 + capturePressureBonus(capturedType, profile)
+        }
+        if (!givesCheck && !move.isCapture && nextMobility > currentMobility) {
+            score -= 20_000
         }
         if (repeated) {
             score -= 450_000
@@ -698,6 +847,22 @@ class XiangqiAi(
         }
         return score
     }
+
+    private fun capturePressureBonus(
+        capturedType: PieceType?,
+        profile: EndgameProfile,
+    ): Int =
+        when (capturedType) {
+            PieceType.ROOK -> 78_000
+            PieceType.CANNON -> 62_000
+            PieceType.HORSE -> 58_000
+            PieceType.ADVISOR,
+            PieceType.ELEPHANT,
+            -> if (profile.favorConversion) 54_000 else 24_000
+            PieceType.PAWN -> 20_000
+            PieceType.GENERAL -> MATE_SCORE
+            null -> 0
+        }
 
     private fun palaceControlCount(
         board: IntArray,
@@ -734,7 +899,13 @@ class XiangqiAi(
         }
     }
 
-    private fun orderMoves(moves: List<Move>, preferredMove: Move?, ply: Int): List<Move> =
+    private fun orderMoves(
+        position: Position,
+        moves: List<Move>,
+        preferredMove: Move?,
+        ply: Int,
+        profile: EndgameProfile?,
+    ): List<Move> =
         moves.sortedByDescending { move ->
             var score = 0
             if (preferredMove != null && move.from == preferredMove.from && move.to == preferredMove.to) {
@@ -753,8 +924,37 @@ class XiangqiAi(
             }
             score += historyHeuristic[historyIndex(move)]
             score += centralBonus(move)
+            score += pressureOrderScore(position, move, profile)
             score
         }
+
+    private fun pressureOrderScore(
+        position: Position,
+        move: Move,
+        profile: EndgameProfile?,
+    ): Int {
+        if (profile == null || position.sideToMove != profile.attacker || !profile.favorConversion) {
+            return 0
+        }
+        val next = engine.applyMove(position, move)
+        val defender = profile.defender
+        val currentMobility = engine.generateLegalMoves(position, defender).size
+        val nextMobility = engine.generateLegalMoves(next, defender).size
+        var score = (currentMobility - nextMobility) * 7_000
+        if (engine.isInCheck(next.board, defender)) {
+            score += 95_000
+        }
+        if (move.isCapture) {
+            score += capturePressureBonus(PieceCodec.typeOf(move.capturedPiece), profile)
+        }
+        score += (palaceControlCount(next.board, profile.attacker, defender) - palaceControlCount(position.board, profile.attacker, defender)) * 4_500
+        val defenderGeneral = engine.findGeneral(next.board, defender)
+        if (defenderGeneral != null) {
+            val distance = abs(fileOf(move.to) - fileOf(defenderGeneral)) + abs(rankOf(move.to) - rankOf(defenderGeneral))
+            score += maxOf(0, 11 - distance) * 420
+        }
+        return score
+    }
 
     private fun orderCaptures(moves: List<Move>): List<Move> =
         moves.sortedByDescending { move ->
@@ -906,8 +1106,12 @@ class XiangqiAi(
     ): Int {
         val moverPerspective = if (position.sideToMove == moverSide) evaluate(position) else -evaluate(position)
         val endgameProfile = detectEndgameProfile(position)
-        if (endgameProfile?.defenderOnlyGeneral == true && endgameProfile.attacker == moverSide) {
-            return -3_800 - moverPerspective / 5 - if (threatLoop) 650 else 220
+        if (endgameProfile?.attacker == moverSide && endgameProfile.favorConversion) {
+            return when {
+                endgameProfile.defenderOnlyGeneral -> -3_800 - moverPerspective / 5 - if (threatLoop) 650 else 220
+                endgameProfile.materialAdvantage >= 850 -> -1_250 - moverPerspective / 8 - if (threatLoop) 240 else 90
+                else -> -520 - moverPerspective / 10 - if (threatLoop) 140 else 45
+            }
         }
         return when {
             moverPerspective >= 500 -> -420 - moverPerspective / 8 - if (threatLoop) 120 else 0
@@ -969,13 +1173,18 @@ class XiangqiAi(
         val attacker: Side,
         val defender: Side,
         val defenderOnlyGeneral: Boolean,
+        val materialAdvantage: Int,
+        val defenderNonKingMaterial: Int,
+        val defenderGuards: Int,
+        val defenderElephants: Int,
+        val favorConversion: Boolean,
         val extraDepth: Int,
         val extraNodeBudget: Int,
         val extraTimeMillis: Long,
         val mateSearchDepth: Int,
     )
 
-    private data class ScoredLoneKingMove(
+    private data class ScoredPressureMove(
         val move: Move,
         val score: Int,
         val givesCheck: Boolean,

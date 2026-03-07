@@ -65,6 +65,25 @@ class XiangqiEngineTest {
         assertEquals(Winner.BLACK, XiangqiEngine.resolveWinner(next))
     }
 
+    @Test
+    fun hardAiKeepsForcingAttackWhenDefenderHasExtraMaterial() {
+        val board = IntArray(BOARD_SIZE)
+        put(board, 4, 9, Side.RED, PieceType.GENERAL)
+        put(board, 2, 9, Side.RED, PieceType.ELEPHANT)
+        put(board, 4, 0, Side.BLACK, PieceType.GENERAL)
+        put(board, 4, 6, Side.BLACK, PieceType.ROOK)
+        put(board, 2, 7, Side.BLACK, PieceType.HORSE)
+        put(board, 6, 7, Side.BLACK, PieceType.HORSE)
+
+        val position = Position(board = board, sideToMove = Side.BLACK)
+        val ai = XiangqiAi()
+        val result = ai.findBestMove(position, Difficulty.HARD)
+
+        assertNotNull("hard ai should keep the mating attack with extra defender material", result.move)
+        val next = XiangqiEngine.applyMove(position, result.move!!)
+        assertTrue("hard ai should keep forcing checks or captures in winning conversion mode", XiangqiEngine.isInCheck(next.board, Side.RED) || result.move!!.isCapture)
+    }
+
     private fun put(board: IntArray, file: Int, rank: Int, side: Side, type: PieceType) {
         board[squareOf(file, rank)] = PieceCodec.make(side, type)
     }
