@@ -1,4 +1,4 @@
-# 象棋乐斗
+# 老爸下象棋
 
 面向 Android 15 大屏设备的中国象棋应用，默认针对 14 寸平板横屏体验做了放大布局和全屏优化。
 
@@ -28,6 +28,8 @@
 
 - `app/src/main/java/com/decli/chinesechess/game`：规则、AI、存档、ViewModel
 - `app/src/main/java/com/decli/chinesechess/ui`：Compose 界面、通知、语音、音效
+- `docs/PRD.md`：产品需求文档
+- `docs/system-design.md`：系统设计方案
 - `.github/workflows/android-apk.yml`：APK 构建和发布流程
 
 ## 本地构建
