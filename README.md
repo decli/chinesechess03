@@ -30,6 +30,7 @@
 - `app/src/main/java/com/decli/chinesechess/ui`：Compose 界面、通知、语音、音效
 - `docs/PRD.md`：产品需求文档
 - `docs/system-design.md`：系统设计方案
+- `docs/iteration-plan.md`：迭代计划与任务拆解
 - `.github/workflows/android-apk.yml`：APK 构建和发布流程
 
 ## 本地构建
