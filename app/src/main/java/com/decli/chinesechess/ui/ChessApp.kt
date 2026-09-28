@@ -139,7 +139,7 @@ fun ChineseChessApp(
                     )
                     val intent = Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
-                        putExtra(Intent.EXTRA_SUBJECT, "老爸下象棋调试日志")
+                        putExtra(Intent.EXTRA_SUBJECT, "中国象棋-老人版调试日志")
                         putExtra(Intent.EXTRA_STREAM, uri)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
